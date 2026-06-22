@@ -1,0 +1,126 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://ownedge.ai/schemas/conf.v1.json",
+  "title": "OwnEdge Appliance Configuration",
+  "type": "object",
+  "required": ["version", "appliance_id", "cluster", "nodes", "deployments", "system", "storage"],
+  "properties": {
+    "version": { "const": 1 },
+    "appliance_id": { "type": "string", "minLength": 1 },
+    "cluster": {
+      "type": "object",
+      "required": ["serving_mode", "preferred_head_node_id", "global_defaults"],
+      "properties": {
+        "serving_mode": { "enum": ["ray_cluster", "litellm_standalone"] },
+        "preferred_head_node_id": { "type": "string" },
+        "global_defaults": {
+          "type": "object",
+          "properties": {
+            "autoscale_enabled": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "nodes": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/definitions/node" }
+    },
+    "deployments": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/deployment" }
+    },
+    "system": { "$ref": "#/definitions/system" },
+    "storage": { "$ref": "#/definitions/storage" }
+  },
+  "definitions": {
+    "node": {
+      "type": "object",
+      "required": ["id", "hostname", "ip", "roles", "gpus_reserved_for_system", "labels", "status", "gpus"],
+      "properties": {
+        "id": { "type": "string" },
+        "hostname": { "type": "string" },
+        "ip": { "type": "string" },
+        "roles": {
+          "type": "object",
+          "properties": {
+            "head": { "type": "boolean" },
+            "litellm_proxy": { "type": "boolean" }
+          }
+        },
+        "gpus_reserved_for_system": { "type": "integer", "minimum": 0 },
+        "labels": { "type": "array", "items": { "type": "string" } },
+        "status": { "enum": ["online", "offline", "degraded"] },
+        "gpus": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "index": { "type": "integer" },
+              "name": { "type": "string" },
+              "vram_mb": { "type": "integer" },
+              "utilization_pct": { "type": "number" }
+            }
+          }
+        }
+      }
+    },
+    "deployment": {
+      "type": "object",
+      "required": ["id", "display_name", "enabled", "source", "user_intent", "advanced", "status"],
+      "properties": {
+        "id": { "type": "string" },
+        "display_name": { "type": "string" },
+        "enabled": { "type": "boolean" },
+        "source": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["type", "repo_id"],
+              "properties": {
+                "type": { "const": "huggingface" },
+                "repo_id": { "type": "string" },
+                "hf_token": { "type": "string" }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["type", "path"],
+              "properties": {
+                "type": { "const": "local_path" },
+                "path": { "type": "string" }
+              }
+            }
+          ]
+        },
+        "user_intent": {
+          "type": "object",
+          "properties": {
+            "performance_goal": {
+              "enum": ["balanced", "max_throughput", "low_latency", "high_availability"]
+            },
+            "scale": { "enum": ["small", "medium", "large", "auto"] }
+          }
+        },
+        "advanced": { "type": "object" },
+        "status": {
+          "enum": ["healthy", "reconciling", "degraded", "stopped", "error"]
+        }
+      }
+    },
+    "system": {
+      "type": "object",
+      "properties": {
+        "network": { "type": "object" },
+        "time": { "type": "object" },
+        "security": { "type": "object" }
+      }
+    },
+    "storage": {
+      "type": "object",
+      "properties": {
+        "mounts": { "type": "array" }
+      }
+    }
+  }
+}
