@@ -1,11 +1,13 @@
 import fs from 'fs';
 import path from 'path';
 
-import { applianceConfigSchema } from '@/lib/schema';
+import { parseApplianceConfig } from '@/lib/schema';
 import type {
   ApplianceConfig,
   ApplianceStatus,
   DeploymentConfig,
+  HeadChangedPayload,
+  MigrateHeadResult,
   MockState,
   NodeConfig,
   ReconcileEvent,
@@ -19,11 +21,36 @@ const STATE_FILE = path.join(DATA_DIR, 'state.json');
 
 let memoryState: MockState | null = null;
 let reconcileTimer: ReturnType<typeof setTimeout> | null = null;
+const wsListeners: Set<(payload: unknown) => void> = new Set();
 
 function ensureDir() {
   if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
   }
+}
+
+function headPayload(config: ApplianceConfig): HeadChangedPayload {
+  const head = config.nodes.find((n) => n.id === config.cluster.head_node_id);
+  return {
+    head_node_id: config.cluster.head_node_id,
+    head_ip: head?.ip ?? config.system.network.head_ip,
+    head_epoch: config.cluster.head_epoch,
+  };
+}
+
+function migrateStateOnLoad(state: MockState): MockState {
+  const raw = state.config as ApplianceConfig & { version?: number };
+  if (raw.version !== 2) {
+    state.config = parseApplianceConfig(raw);
+  }
+  if (!state.status.head) {
+    state.status.head = headPayload(state.config);
+  }
+  if (!state.local_node_id) {
+    state.local_node_id = state.config.cluster.head_node_id;
+  }
+  syncHeadFlags(state.config);
+  return state;
 }
 
 function persist(state: MockState) {
@@ -36,12 +63,22 @@ function loadFromDisk(): MockState | null {
   try {
     if (fs.existsSync(STATE_FILE)) {
       const raw = fs.readFileSync(STATE_FILE, 'utf-8');
-      return JSON.parse(raw) as MockState;
+      return migrateStateOnLoad(JSON.parse(raw) as MockState);
     }
   } catch {
     /* use seed */
   }
   return null;
+}
+
+export function subscribeWs(listener: (payload: unknown) => void): () => void {
+  wsListeners.add(listener);
+  return () => wsListeners.delete(listener);
+}
+
+function broadcast(channel: string, data: unknown) {
+  const msg = { channel, data, ts: Date.now() };
+  for (const fn of wsListeners) fn(msg);
 }
 
 export function getState(): MockState {
@@ -59,10 +96,12 @@ export function getConfig(): ApplianceConfig {
   return getState().config;
 }
 
-export function setConfig(config: ApplianceConfig): ApplianceConfig {
-  const parsed = applianceConfigSchema.parse(config);
+export function setConfig(config: unknown): ApplianceConfig {
+  const parsed = parseApplianceConfig(config);
   const state = getState();
   state.config = parsed;
+  syncHeadFlags(state.config);
+  state.status.head = headPayload(state.config);
   saveState(state);
   return parsed;
 }
@@ -78,6 +117,7 @@ export function addEvent(message: string, level: ReconcileEvent['level'] = 'info
   state.status.events = state.status.events.slice(0, 50);
   state.status.last_reconcile_ts = Date.now() / 1000;
   saveState(state);
+  broadcast('events', state.status.events[0]);
 }
 
 export function startReconcile(message: string): void {
@@ -85,6 +125,7 @@ export function startReconcile(message: string): void {
   state.status.state = 'RECONCILING';
   state.status.last_error = message;
   addEvent(message, 'info');
+  broadcast('cluster.state', { state: 'RECONCILING', last_error: message });
 
   if (reconcileTimer) clearTimeout(reconcileTimer);
   const duration = 3000 + Math.random() * 5000;
@@ -96,30 +137,96 @@ export function startReconcile(message: string): void {
       if (dep.enabled) dep.status = 'healthy';
     }
     addEvent('Reconciliation complete — all enabled deployments healthy', 'info');
+    broadcast('cluster.state', { state: 'READY', last_error: null });
     saveState(s);
   }, duration);
 }
 
+export function syncHeadFlags(config: ApplianceConfig): void {
+  const headId = config.cluster.head_node_id;
+  for (const node of config.nodes) {
+    node.is_head = node.id === headId;
+  }
+  const head = config.nodes.find((n) => n.id === headId);
+  if (head) {
+    config.system.network.head_ip = head.ip;
+  }
+}
+
 export function updateCluster(partial: Partial<ApplianceConfig['cluster']>): ApplianceConfig {
   const state = getState();
+  const prevHead = state.config.cluster.head_node_id;
+
+  if (partial.head_node_id && partial.head_node_id !== prevHead) {
+    migrateHead(partial.head_node_id);
+    return getState().config;
+  }
+
   state.config.cluster = { ...state.config.cluster, ...partial };
-  syncNodeRoles(state.config);
+  syncHeadFlags(state.config);
+  state.status.head = headPayload(state.config);
   saveState(state);
   startReconcile('Cluster settings updated — rescheduling deployments');
   return state.config;
 }
 
-export function syncNodeRoles(config: ApplianceConfig): void {
-  const headId = config.cluster.preferred_head_node_id;
-  const litellmMode = config.cluster.serving_mode === 'litellm_standalone';
+export function migrateHead(newHeadNodeId: string): MigrateHeadResult {
+  const state = getState();
+  const fromId = state.config.cluster.head_node_id;
+  const newHead = state.config.nodes.find((n) => n.id === newHeadNodeId);
 
-  for (const node of config.nodes) {
-    node.roles.head = node.id === headId;
-    node.roles.litellm_proxy = litellmMode && node.id === headId;
+  if (!newHead) {
+    return {
+      success: false,
+      error: 'Node not found',
+      head: state.status.head,
+      impact: { from_node_id: fromId, to_node_id: newHeadNodeId, deployments_rescheduled: 0 },
+    };
   }
 
-  config.system.network.head_ip =
-    config.nodes.find((n) => n.id === headId)?.ip ?? config.system.network.head_ip;
+  if (newHead.status !== 'online') {
+    return {
+      success: false,
+      error: 'New head node must be online',
+      head: state.status.head,
+      impact: { from_node_id: fromId, to_node_id: newHeadNodeId, deployments_rescheduled: 0 },
+    };
+  }
+
+  if (fromId === newHeadNodeId) {
+    return {
+      success: true,
+      head: state.status.head,
+      impact: { from_node_id: fromId, to_node_id: newHeadNodeId, deployments_rescheduled: 0 },
+    };
+  }
+
+  const enabledCount = state.config.deployments.filter((d) => d.enabled).length;
+  const fromNode = state.config.nodes.find((n) => n.id === fromId);
+
+  state.config.cluster.head_node_id = newHeadNodeId;
+  state.config.cluster.head_epoch += 1;
+  syncHeadFlags(state.config);
+  state.status.head = headPayload(state.config);
+  state.local_node_id = newHeadNodeId;
+
+  addEvent(
+    `Head migrated from ${fromNode?.hostname ?? fromId} to ${newHead.hostname} (epoch ${state.config.cluster.head_epoch})`,
+    'warn',
+  );
+  broadcast('head.changed', state.status.head);
+  saveState(state);
+  startReconcile(`Head migration — rescheduling ${enabledCount} deployment(s)`);
+
+  return {
+    success: true,
+    head: state.status.head,
+    impact: {
+      from_node_id: fromId,
+      to_node_id: newHeadNodeId,
+      deployments_rescheduled: enabledCount,
+    },
+  };
 }
 
 export function updateNode(nodeId: string, partial: Partial<NodeConfig>): NodeConfig | null {
@@ -130,9 +237,9 @@ export function updateNode(nodeId: string, partial: Partial<NodeConfig>): NodeCo
   const node = { ...state.config.nodes[idx], ...partial, id: nodeId };
   state.config.nodes[idx] = node;
 
-  if (partial.roles?.head || node.roles.head) {
-    state.config.cluster.preferred_head_node_id = nodeId;
-    syncNodeRoles(state.config);
+  if (partial.is_head) {
+    migrateHead(nodeId);
+    return state.config.nodes[idx];
   }
 
   saveState(state);
@@ -206,7 +313,6 @@ export function removeMount(id: string): boolean {
 
 export function getStatus(): ApplianceStatus {
   const state = getState();
-  // Simulate slowly shifting GPU utilization
   for (const node of state.config.nodes) {
     for (const gpu of node.gpus) {
       const base = gpu.utilization_pct ?? 50;
@@ -214,9 +320,28 @@ export function getStatus(): ApplianceStatus {
       gpu.utilization_pct = Math.min(95, Math.max(5, Math.round(base * 0.95 + delta)));
     }
   }
+  state.status.head = headPayload(state.config);
+  broadcast('node.metrics', {
+    nodes: state.config.nodes.map((n) => ({
+      id: n.id,
+      gpus: n.gpus.map((g) => ({
+        index: g.index,
+        utilization_pct: g.utilization_pct,
+      })),
+    })),
+  });
   return state.status;
 }
 
 export function getStorage() {
   return getState().storage_usage;
+}
+
+export function getLocalNodeId(): string {
+  return getState().local_node_id;
+}
+
+export function isHeadGateway(): boolean {
+  const state = getState();
+  return state.local_node_id === state.config.cluster.head_node_id;
 }

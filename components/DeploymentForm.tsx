@@ -8,6 +8,7 @@ import type {
   ClusterConfig,
   DeploymentConfig,
   PlannerRecommendation,
+  ValidationResult,
 } from '@/lib/types';
 
 function emptyDeployment(): DeploymentConfig {
@@ -17,12 +18,12 @@ function emptyDeployment(): DeploymentConfig {
     enabled: true,
     source: { type: 'huggingface', repo_id: '' },
     user_intent: { performance_goal: 'balanced', scale: 'medium' },
-    advanced: {
+    parallelism: {
       context_length: 8192,
       quantization: null,
-      num_replicas: 1,
-      tensor_parallel_size: 1,
-      pipeline_parallel_size: 1,
+      instances: 1,
+      gpus_per_instance: 1,
+      nodes_per_instance: 1,
       autoscaling: null,
     },
     status: 'reconciling',
@@ -43,29 +44,33 @@ export function DeploymentForm({
   const [dep, setDep] = useState<DeploymentConfig>(initial ?? emptyDeployment());
   const [advanced, setAdvanced] = useState(!!initial);
   const [rec, setRec] = useState<PlannerRecommendation | null>(null);
+  const [validation, setValidation] = useState<ValidationResult | null>(null);
 
-  const litellm = cluster.serving_mode === 'litellm_standalone';
+  const standalone = cluster.serving_mode === 'standalone';
 
   useEffect(() => {
     const t = setTimeout(() => {
       api.recommend(dep).then(setRec).catch(() => setRec(null));
+      api.validate(dep).then(setValidation).catch(() => setValidation(null));
     }, 300);
     return () => clearTimeout(t);
-  }, [dep.user_intent, dep.source, dep.display_name]);
+  }, [dep]);
 
   const applyRecommendation = () => {
     if (!rec) return;
     setDep((d) => ({
       ...d,
-      advanced: {
-        ...d.advanced,
-        num_replicas: rec.num_replicas,
-        tensor_parallel_size: rec.tensor_parallel_size,
-        pipeline_parallel_size: rec.pipeline_parallel_size,
+      parallelism: {
+        ...d.parallelism,
+        instances: rec.instances,
+        gpus_per_instance: rec.gpus_per_instance,
+        nodes_per_instance: rec.nodes_per_instance,
         context_length: rec.context_length,
       },
     }));
   };
+
+  const canSave = dep.display_name.trim() && (validation?.valid ?? true);
 
   return (
     <div className="space-y-5">
@@ -178,10 +183,15 @@ export function DeploymentForm({
           <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/5 p-3 text-sm">
             <div className="font-medium text-cyan-400 mb-1">Recommended</div>
             <div className="text-slate-400 text-xs space-y-0.5">
-              <div>Replicas: {rec.num_replicas} · TP: {rec.tensor_parallel_size} · PP: {rec.pipeline_parallel_size}</div>
+              <div>
+                Instances: {rec.instances} · GPUs/instance: {rec.gpus_per_instance} · Nodes/instance:{' '}
+                {rec.nodes_per_instance}
+              </div>
               <div>Context: {rec.context_length.toLocaleString()} tokens</div>
               {rec.warnings.map((w) => (
-                <div key={w} className="text-amber-400/80">⚠ {w}</div>
+                <div key={w} className="text-amber-400/80">
+                  {w}
+                </div>
               ))}
             </div>
             <Button variant="ghost" className="mt-2 text-xs" onClick={applyRecommendation}>
@@ -190,6 +200,30 @@ export function DeploymentForm({
           </div>
         )}
       </div>
+
+      {validation && (validation.errors.length > 0 || validation.warnings.length > 0) && (
+        <div className="space-y-2 text-sm">
+          {validation.errors.map((e) => (
+            <div key={e} className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-red-400">
+              {e}
+            </div>
+          ))}
+          {validation.warnings.map((w) => (
+            <div
+              key={w}
+              className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-amber-400"
+            >
+              {w}
+            </div>
+          ))}
+          {validation.inventory && (
+            <div className="text-xs text-slate-500">
+              Cluster: {validation.inventory.available_gpu_count} GPUs available across{' '}
+              {validation.inventory.online_node_count} online node(s)
+            </div>
+          )}
+        </div>
+      )}
 
       <button
         type="button"
@@ -202,45 +236,44 @@ export function DeploymentForm({
       {advanced && (
         <div className="grid grid-cols-2 gap-4 rounded-xl border border-slate-800 p-4">
           <div>
-            <Label>Num replicas</Label>
+            <Label>Instances</Label>
             <Input
               type="number"
               min={1}
-              value={dep.advanced.num_replicas}
+              value={dep.parallelism.instances}
               onChange={(e) =>
                 setDep({
                   ...dep,
-                  advanced: { ...dep.advanced, num_replicas: +e.target.value },
+                  parallelism: { ...dep.parallelism, instances: +e.target.value },
                 })
               }
             />
           </div>
           <div>
-            <Label>Tensor parallel size {litellm && '(single-node max)'}</Label>
+            <Label>GPUs per instance {standalone && '(max per node)'}</Label>
             <Input
               type="number"
               min={1}
-              disabled={litellm && dep.advanced.tensor_parallel_size > 2}
-              value={dep.advanced.tensor_parallel_size}
+              value={dep.parallelism.gpus_per_instance}
               onChange={(e) =>
                 setDep({
                   ...dep,
-                  advanced: { ...dep.advanced, tensor_parallel_size: +e.target.value },
+                  parallelism: { ...dep.parallelism, gpus_per_instance: +e.target.value },
                 })
               }
             />
           </div>
           <div>
-            <Label>Pipeline parallel size {litellm && '(disabled)'}</Label>
+            <Label>Nodes per instance {standalone && '(fixed at 1)'}</Label>
             <Input
               type="number"
               min={1}
-              disabled={litellm}
-              value={dep.advanced.pipeline_parallel_size}
+              disabled={standalone}
+              value={dep.parallelism.nodes_per_instance}
               onChange={(e) =>
                 setDep({
                   ...dep,
-                  advanced: { ...dep.advanced, pipeline_parallel_size: +e.target.value },
+                  parallelism: { ...dep.parallelism, nodes_per_instance: +e.target.value },
                 })
               }
             />
@@ -249,11 +282,11 @@ export function DeploymentForm({
             <Label>Context length</Label>
             <Input
               type="number"
-              value={dep.advanced.context_length}
+              value={dep.parallelism.context_length}
               onChange={(e) =>
                 setDep({
                   ...dep,
-                  advanced: { ...dep.advanced, context_length: +e.target.value },
+                  parallelism: { ...dep.parallelism, context_length: +e.target.value },
                 })
               }
             />
@@ -261,12 +294,12 @@ export function DeploymentForm({
           <div>
             <Label>Quantization</Label>
             <Select
-              value={dep.advanced.quantization ?? ''}
+              value={dep.parallelism.quantization ?? ''}
               onChange={(e) =>
                 setDep({
                   ...dep,
-                  advanced: {
-                    ...dep.advanced,
+                  parallelism: {
+                    ...dep.parallelism,
                     quantization: e.target.value || null,
                   },
                 })
@@ -296,10 +329,7 @@ export function DeploymentForm({
         <Button variant="ghost" onClick={onCancel}>
           Cancel
         </Button>
-        <Button
-          onClick={() => onSave(dep)}
-          disabled={!dep.display_name.trim()}
-        >
+        <Button onClick={() => onSave(dep)} disabled={!canSave}>
           {initial ? 'Save changes' : 'Add deployment'}
         </Button>
       </div>

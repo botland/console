@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { NodeBadge } from '@/components/StatusBadge';
 import { Button, Card, Input, Label, PageHeader } from '@/components/ui';
 import { api } from '@/lib/api';
@@ -13,6 +14,7 @@ export default function NodesPage() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState<Partial<NodeConfig>>({});
+  const [headCandidate, setHeadCandidate] = useState<string | null>(null);
 
   const load = () => api.listNodes().then(setNodes).catch(console.error);
 
@@ -34,8 +36,10 @@ export default function NodesPage() {
     load();
   };
 
-  const setHead = async (id: string) => {
-    await api.updateNode(id, { roles: { head: true, litellm_proxy: false } });
+  const confirmSetHead = async () => {
+    if (!headCandidate) return;
+    await api.migrateHead(headCandidate);
+    setHeadCandidate(null);
     load();
   };
 
@@ -43,7 +47,7 @@ export default function NodesPage() {
     <>
       <PageHeader
         title="Nodes"
-        description="Infrastructure resource pool — minimal per-node settings"
+        description="Hardware resource pool"
       />
 
       <div className="space-y-4">
@@ -56,14 +60,9 @@ export default function NodesPage() {
                     {node.hostname}
                   </span>
                   <NodeBadge status={node.status} />
-                  {node.roles.head && (
+                  {node.is_head && (
                     <span className="text-xs rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-2 py-0.5 text-cyan-400">
                       head
-                    </span>
-                  )}
-                  {node.roles.litellm_proxy && (
-                    <span className="text-xs rounded-lg border border-purple-500/30 bg-purple-500/10 px-2 py-0.5 text-purple-400">
-                      litellm
                     </span>
                   )}
                 </div>
@@ -74,8 +73,8 @@ export default function NodesPage() {
                 </div>
               </div>
               <div className="flex gap-2">
-                {!node.roles.head && (
-                  <Button variant="secondary" onClick={() => setHead(node.id)}>
+                {!node.is_head && node.status === 'online' && (
+                  <Button variant="secondary" onClick={() => setHeadCandidate(node.id)}>
                     Set as head
                   </Button>
                 )}
@@ -161,6 +160,16 @@ export default function NodesPage() {
           </Card>
         ))}
       </div>
+
+      <ConfirmDialog
+        open={!!headCandidate}
+        title="Migrate head to this node?"
+        message="The control plane will move to this node. All workers will reconnect. Active deployments may reschedule."
+        confirmLabel="Migrate head"
+        danger
+        onConfirm={confirmSetHead}
+        onCancel={() => setHeadCandidate(null)}
+      />
     </>
   );
 }

@@ -28,6 +28,9 @@ export default function DeploymentsPage() {
   }, [load]);
 
   const handleSave = async (dep: DeploymentConfig) => {
+    const validation = await api.validate(dep);
+    if (!validation.valid) return;
+
     if (editing === 'new') {
       await api.createDeployment(dep);
     } else if (editing) {
@@ -47,7 +50,7 @@ export default function DeploymentsPage() {
     <>
       <PageHeader
         title="Deployments"
-        description="Manage models served on your appliance"
+        description="Models served on your appliance"
         action={
           <Button onClick={() => setEditing('new')}>
             <Plus className="w-4 h-4" /> Add model
@@ -88,8 +91,8 @@ export default function DeploymentsPage() {
                   : `Path: ${dep.source.path}`}
               </div>
               <div className="mt-1 text-xs text-slate-500">
-                {dep.advanced.num_replicas} replica(s) · TP {dep.advanced.tensor_parallel_size} ·{' '}
-                {dep.user_intent.performance_goal.replace('_', ' ')} · {dep.user_intent.scale}
+                {dep.parallelism.instances} instance(s) · {dep.parallelism.gpus_per_instance}{' '}
+                GPU(s)/instance · {dep.user_intent.performance_goal.replace('_', ' ')}
               </div>
             </div>
             <div className="flex gap-2">

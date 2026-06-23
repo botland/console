@@ -2,7 +2,7 @@
 
 Standalone web UI for managing OwnEdge AI appliances. Matches the look and feel of [b2b.ownedge.ai](https://b2b.ownedge.ai/en) (from [botland/nocloud](https://github.com/botland/nocloud)).
 
-**This is a functional mock** — it uses a built-in mock API and a demo 3-node cluster. No changes to `inferedge-phase1` are required.
+**Functional mock** with built-in API, demo 3-node cluster, hardware validation, and head migration simulation.
 
 ## Quick start
 
@@ -14,61 +14,46 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-## Tabs
+## Design principles
 
-| Tab | Purpose |
-|-----|---------|
-| Overview | Appliance health, GPU utilization, events |
-| Deployments | Add/edit models (HF or local path), guided + advanced settings |
-| Cluster | Ray Serve LLM vs LiteLLM + vLLM mode |
-| Nodes | 3-node demo cluster (head + workers) |
-| Storage | Disk usage, directory browser, NFS/SMB mounts |
-| System | Network, NTP, security |
-| Config | Export/import `conf.json` |
+- **No technology leakage** — UI never mentions Ray, vLLM, or LiteLLM
+- **Head = control plane** — user-designated head runs aggregation; workers proxy to it
+- **Hardware validation** — deployments checked against cluster GPU inventory before save
 
-## Serving modes
+## Serving topologies
 
-- **Ray Serve LLM cluster** — distributed inference, cross-node TP/PP
-- **LiteLLM + vLLM** — head runs LiteLLM proxy, workers run vLLM (TP limited to single node)
+| Mode | User label | Behavior |
+|------|------------|----------|
+| `distributed` | Distributed | Multi-node; instances can span nodes |
+| `standalone` | Standalone | Parallelism limited to a single node |
 
-## `conf.json` and USB dongle
+## Head migration
 
-The console exports `conf.json` with jq-sorted keys, compatible with the USB workflow:
+Changing the head (Cluster or Nodes tab) triggers:
 
-1. USB mounted at `/mnt/dongles/<device>/` (see `usb-dongle-mount.sh`)
-2. Place `conf.json` on the dongle
-3. `usb-dongle-check.sh` copies it to `/home/conf.json` when changed
+1. `head_epoch` increment
+2. `head.changed` event on `/api/v1/ws`
+3. Simulated worker repoint + deployment reschedule
 
-Future integration: an agent reads `/home/conf.json` and applies it to the real controller.
+Export `conf.json` includes `head_node_id`, `head_ip`, and `head_epoch` for USB dongle compatibility.
 
-## Mock API
+## Config schema
 
-State persists to `.data/state.json` between restarts.
+- **v2** (current): `distributed`/`standalone`, `parallelism.instances`, `gpus_per_instance`, `nodes_per_instance`
+- **v1** import: auto-migrated from legacy `ray_cluster`/`litellm_standalone` names
+
+## API
 
 | Endpoint | Description |
 |----------|-------------|
-| `GET /api/status` | Appliance state + config |
-| `GET/PUT /api/config` | Full configuration |
-| `GET /api/config/export` | Download `conf.json` |
-| `POST /api/import` | Import configuration |
-| `GET/POST/PUT/DELETE /api/deployments` | Deployment CRUD |
-| `POST /api/deployments/recommend` | Planner recommendations |
-| `GET/PUT /api/cluster` | Cluster settings |
-| `GET/PUT /api/nodes/:id` | Per-node settings |
-| `GET/PUT /api/system` | System settings |
-| `GET /api/storage` | Storage browser + mounts |
-| `GET /api/events` | SSE status stream |
+| `GET /api/status` | State + config |
+| `POST /api/deployments/validate` | Hardware feasibility check |
+| `POST /api/cluster/migrate-head` | Head migration |
+| `GET /api/v1/ws` | SSE: `cluster.state`, `node.metrics`, `head.changed`, `events` |
+| `GET /api/config/export` | `conf.json` download |
 
 ## Future integration
 
-1. Extract to `github.com/botland/appliance-console`
-2. Replace `lib/mock/` with client calls to `inferedge-phase1` controller `/api/v1`
-3. Share UI tokens with `nocloud` via package or submodule
-4. Wire `conf.json` ↔ USB dongle ↔ controller reconciler
-
-## Environment
-
-```bash
-NEXT_PUBLIC_MOCK_APPLIANCE_ID=forge-demo-001
-NEXT_PUBLIC_BRAND_NAME=OwnEdge
-```
+1. `appliance-agent` on each node (telemetry + heartbeat to head)
+2. Worker gateways proxy `/api/v1` to head
+3. Private runtime adapter to `inferedge-phase1` (no tech names in public API)

@@ -1,4 +1,4 @@
-export type ServingMode = 'ray_cluster' | 'litellm_standalone';
+export type ServingMode = 'distributed' | 'standalone';
 export type PerformanceGoal = 'balanced' | 'max_throughput' | 'low_latency' | 'high_availability';
 export type ScalePreset = 'small' | 'medium' | 'large' | 'auto';
 export type DeploymentStatus = 'healthy' | 'reconciling' | 'degraded' | 'stopped' | 'error';
@@ -10,18 +10,14 @@ export interface GpuDevice {
   name: string;
   vram_mb: number;
   utilization_pct?: number;
-}
-
-export interface NodeRoles {
-  head: boolean;
-  litellm_proxy: boolean;
+  vram_used_mb?: number;
 }
 
 export interface NodeConfig {
   id: string;
   hostname: string;
   ip: string;
-  roles: NodeRoles;
+  is_head: boolean;
   gpus_reserved_for_system: number;
   labels: string[];
   status: NodeStatus;
@@ -30,7 +26,8 @@ export interface NodeConfig {
 
 export interface ClusterConfig {
   serving_mode: ServingMode;
-  preferred_head_node_id: string;
+  head_node_id: string;
+  head_epoch: number;
   global_defaults: {
     autoscale_enabled: boolean;
   };
@@ -41,17 +38,17 @@ export type ModelSource =
   | { type: 'local_path'; path: string };
 
 export interface AutoscalingConfig {
-  min_replicas: number;
-  max_replicas: number;
+  min_instances: number;
+  max_instances: number;
   target_ongoing_requests: number;
 }
 
-export interface DeploymentAdvanced {
+export interface DeploymentParallelism {
   context_length: number;
   quantization: string | null;
-  num_replicas: number;
-  tensor_parallel_size: number;
-  pipeline_parallel_size: number;
+  instances: number;
+  gpus_per_instance: number;
+  nodes_per_instance: number;
   autoscaling: AutoscalingConfig | null;
 }
 
@@ -64,7 +61,7 @@ export interface DeploymentConfig {
     performance_goal: PerformanceGoal;
     scale: ScalePreset;
   };
-  advanced: DeploymentAdvanced;
+  parallelism: DeploymentParallelism;
   status: DeploymentStatus;
 }
 
@@ -94,7 +91,7 @@ export interface StorageConfig {
 }
 
 export interface ApplianceConfig {
-  version: 1;
+  version: 2;
   appliance_id: string;
   cluster: ClusterConfig;
   nodes: NodeConfig[];
@@ -110,20 +107,37 @@ export interface ReconcileEvent {
   level: 'info' | 'warn' | 'error';
 }
 
+export interface HeadChangedPayload {
+  head_node_id: string;
+  head_ip: string;
+  head_epoch: number;
+}
+
 export interface ApplianceStatus {
   state: ApplianceState;
   last_error: string | null;
   last_reconcile_ts: number;
   events: ReconcileEvent[];
+  head: HeadChangedPayload;
   download_progress?: {
     bytes: number;
     file: string;
   };
 }
 
+export interface ClusterInventory {
+  total_gpu_count: number;
+  available_gpu_count: number;
+  max_gpus_per_node: number;
+  online_node_count: number;
+  head_online: boolean;
+}
+
 export interface MockState {
   config: ApplianceConfig;
   status: ApplianceStatus;
+  /** Simulates which node this gateway instance runs on */
+  local_node_id: string;
   storage_usage: {
     total_bytes: number;
     used_bytes: number;
@@ -132,9 +146,28 @@ export interface MockState {
 }
 
 export interface PlannerRecommendation {
-  num_replicas: number;
-  tensor_parallel_size: number;
-  pipeline_parallel_size: number;
+  instances: number;
+  gpus_per_instance: number;
+  nodes_per_instance: number;
   context_length: number;
   warnings: string[];
+}
+
+export interface ValidationResult {
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+  suggested?: PlannerRecommendation;
+  inventory?: ClusterInventory;
+}
+
+export interface MigrateHeadResult {
+  success: boolean;
+  error?: string;
+  head: HeadChangedPayload;
+  impact: {
+    from_node_id: string;
+    to_node_id: string;
+    deployments_rescheduled: number;
+  };
 }

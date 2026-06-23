@@ -1,4 +1,4 @@
-import type { ApplianceConfig, MockState, ReconcileEvent } from '@/lib/types';
+import type { ApplianceConfig, HeadChangedPayload, MockState, ReconcileEvent } from '@/lib/types';
 
 const now = Date.now();
 
@@ -6,29 +6,30 @@ const seedEvents: ReconcileEvent[] = [
   {
     id: 'evt-1',
     timestamp: new Date(now - 120_000).toISOString(),
-    message: 'Cluster ready — 3 nodes online',
+    message: 'Appliance ready — 3 nodes online',
     level: 'info',
   },
   {
     id: 'evt-2',
     timestamp: new Date(now - 90_000).toISOString(),
-    message: 'Deployment qwen2.5-32b healthy on 2 replicas',
+    message: 'Deployment qwen2.5-32b healthy on 2 instances',
     level: 'info',
   },
   {
     id: 'evt-3',
     timestamp: new Date(now - 45_000).toISOString(),
-    message: 'GPU utilization nominal across workers',
+    message: 'GPU utilization nominal across nodes',
     level: 'info',
   },
 ];
 
 export const seedConfig: ApplianceConfig = {
-  version: 1,
+  version: 2,
   appliance_id: process.env.NEXT_PUBLIC_MOCK_APPLIANCE_ID ?? 'forge-demo-001',
   cluster: {
-    serving_mode: 'ray_cluster',
-    preferred_head_node_id: 'node-1',
+    serving_mode: 'distributed',
+    head_node_id: 'node-1',
+    head_epoch: 1,
     global_defaults: { autoscale_enabled: true },
   },
   nodes: [
@@ -36,7 +37,7 @@ export const seedConfig: ApplianceConfig = {
       id: 'node-1',
       hostname: 'forge-head',
       ip: '192.168.1.10',
-      roles: { head: true, litellm_proxy: false },
+      is_head: true,
       gpus_reserved_for_system: 0,
       labels: ['high-bandwidth'],
       status: 'online',
@@ -49,7 +50,7 @@ export const seedConfig: ApplianceConfig = {
       id: 'node-2',
       hostname: 'forge-worker-1',
       ip: '192.168.1.11',
-      roles: { head: false, litellm_proxy: false },
+      is_head: false,
       gpus_reserved_for_system: 0,
       labels: ['inference'],
       status: 'online',
@@ -62,7 +63,7 @@ export const seedConfig: ApplianceConfig = {
       id: 'node-3',
       hostname: 'forge-worker-2',
       ip: '192.168.1.12',
-      roles: { head: false, litellm_proxy: false },
+      is_head: false,
       gpus_reserved_for_system: 1,
       labels: ['storage'],
       status: 'online',
@@ -79,13 +80,13 @@ export const seedConfig: ApplianceConfig = {
       enabled: true,
       source: { type: 'huggingface', repo_id: 'Qwen/Qwen2.5-32B-Instruct' },
       user_intent: { performance_goal: 'balanced', scale: 'medium' },
-      advanced: {
+      parallelism: {
         context_length: 32768,
         quantization: null,
-        num_replicas: 2,
-        tensor_parallel_size: 4,
-        pipeline_parallel_size: 1,
-        autoscaling: { min_replicas: 1, max_replicas: 4, target_ongoing_requests: 8 },
+        instances: 2,
+        gpus_per_instance: 4,
+        nodes_per_instance: 1,
+        autoscaling: { min_instances: 1, max_instances: 4, target_ongoing_requests: 8 },
       },
       status: 'healthy',
     },
@@ -95,12 +96,12 @@ export const seedConfig: ApplianceConfig = {
       enabled: false,
       source: { type: 'local_path', path: '/models/customer-nfs/llama-finetuned-v2' },
       user_intent: { performance_goal: 'low_latency', scale: 'small' },
-      advanced: {
+      parallelism: {
         context_length: 8192,
         quantization: 'awq',
-        num_replicas: 1,
-        tensor_parallel_size: 1,
-        pipeline_parallel_size: 1,
+        instances: 1,
+        gpus_per_instance: 1,
+        nodes_per_instance: 1,
         autoscaling: null,
       },
       status: 'stopped',
@@ -127,14 +128,25 @@ export const seedConfig: ApplianceConfig = {
   },
 };
 
+function headPayload(config: ApplianceConfig): HeadChangedPayload {
+  const head = config.nodes.find((n) => n.id === config.cluster.head_node_id);
+  return {
+    head_node_id: config.cluster.head_node_id,
+    head_ip: head?.ip ?? config.system.network.head_ip,
+    head_epoch: config.cluster.head_epoch,
+  };
+}
+
 export function createSeedState(): MockState {
   return {
     config: structuredClone(seedConfig),
+    local_node_id: 'node-1',
     status: {
       state: 'READY',
       last_error: null,
       last_reconcile_ts: now / 1000,
       events: [...seedEvents],
+      head: headPayload(seedConfig),
     },
     storage_usage: {
       total_bytes: 8 * 1024 ** 4,
@@ -144,9 +156,7 @@ export function createSeedState(): MockState {
           { name: 'Qwen--Qwen2.5-32B-Instruct', size_bytes: 65e9, type: 'dir' },
           { name: 'meta-llama--Llama-3.1-8B-Instruct', size_bytes: 16e9, type: 'dir' },
         ],
-        '/models/uploads': [
-          { name: 'my-finetuned-llama', size_bytes: 15e9, type: 'dir' },
-        ],
+        '/models/uploads': [{ name: 'my-finetuned-llama', size_bytes: 15e9, type: 'dir' }],
         '/models/customer-nfs': [
           { name: 'llama-finetuned-v2', size_bytes: 15e9, type: 'dir' },
           { name: 'qwen-custom', size_bytes: 62e9, type: 'dir' },

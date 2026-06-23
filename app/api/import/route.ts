@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { applianceConfigSchema } from '@/lib/schema';
 import { setConfig, startReconcile } from '@/lib/mock/store';
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const config = applianceConfigSchema.parse(body);
-    setConfig(config);
+    setConfig(body);
     startReconcile('Configuration imported — applying changes');
     return NextResponse.json({ applied: true });
   } catch (e) {

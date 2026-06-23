@@ -121,8 +121,8 @@ export default function SystemPage() {
 
       <ConfirmDialog
         open={headIpWarning}
-        title="Change head node IP?"
-        message="Changing the head node IP will affect connectivity to all nodes and running deployments. You may lose access until you navigate to the new address."
+        title="Change head IP?"
+        message="Changing the head IP affects all nodes and running deployments. Workers will reconnect to the head. You may need to open the console at the new address."
         confirmLabel="Apply anyway"
         danger
         onConfirm={save}

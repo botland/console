@@ -3,10 +3,12 @@ import type {
   ApplianceStatus,
   ClusterConfig,
   DeploymentConfig,
+  MigrateHeadResult,
   NodeConfig,
   PlannerRecommendation,
   StorageMount,
   SystemConfig,
+  ValidationResult,
 } from '@/lib/types';
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -33,7 +35,7 @@ export const api = {
   exportConfig: () => window.open('/api/config/export', '_blank'),
 
   importConfig: (config: unknown) =>
-    fetchJson<{ applied: boolean; preview?: string }>('/api/import', {
+    fetchJson<{ applied: boolean }>('/api/import', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(config),
@@ -65,6 +67,13 @@ export const api = {
       body: JSON.stringify(dep),
     }),
 
+  validate: (dep: DeploymentConfig) =>
+    fetchJson<ValidationResult>('/api/deployments/validate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(dep),
+    }),
+
   getCluster: () => fetchJson<ClusterConfig>('/api/cluster'),
 
   putCluster: (cluster: ClusterConfig) =>
@@ -72,6 +81,13 @@ export const api = {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(cluster),
+    }),
+
+  migrateHead: (head_node_id: string) =>
+    fetchJson<MigrateHeadResult>('/api/cluster/migrate-head', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ head_node_id }),
     }),
 
   listNodes: () => fetchJson<NodeConfig[]>('/api/nodes'),

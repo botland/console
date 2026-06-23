@@ -15,7 +15,12 @@ export default function OverviewPage() {
     const load = () => api.status().then(setStatus).catch(console.error);
     load();
     const id = setInterval(load, 5000);
-    return () => clearInterval(id);
+    const es = new EventSource('/api/v1/ws');
+    es.onmessage = () => load();
+    return () => {
+      clearInterval(id);
+      es.close();
+    };
   }, []);
 
   if (!status) {
@@ -26,15 +31,14 @@ export default function OverviewPage() {
   const enabledDeps = config.deployments.filter((d) => d.enabled);
   const totalGpus = config.nodes.reduce((s, n) => s + n.gpus.length, 0);
   const modeLabel =
-    config.cluster.serving_mode === 'ray_cluster'
-      ? 'Ray Serve LLM Cluster'
-      : 'LiteLLM + vLLM';
+    config.cluster.serving_mode === 'distributed' ? 'Distributed' : 'Standalone';
+  const headNode = config.nodes.find((n) => n.is_head);
 
   return (
     <>
       <PageHeader
         title="Overview"
-        description={`Appliance ${config.appliance_id}`}
+        description={`Appliance ${config.appliance_id} · Head: ${headNode?.hostname ?? 'unknown'}`}
       />
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
@@ -43,7 +47,7 @@ export default function OverviewPage() {
           <ApplianceBadge state={status.state} />
         </Card>
         <Card>
-          <div className="text-xs text-slate-500 mb-2">Cluster mode</div>
+          <div className="text-xs text-slate-500 mb-2">Serving topology</div>
           <div className="text-sm font-medium text-cyan-400">{modeLabel}</div>
         </Card>
         <Card>
@@ -70,6 +74,9 @@ export default function OverviewPage() {
               <div key={node.id}>
                 <div className="text-xs font-medium text-slate-400 mb-2">
                   {node.hostname} ({node.ip})
+                  {node.is_head && (
+                    <span className="ml-2 text-cyan-400/80">· head</span>
+                  )}
                 </div>
                 <div className="space-y-2 pl-2">
                   {node.gpus.map((gpu) => (

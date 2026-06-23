@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://ownedge.ai/schemas/conf.v2.json",
+  "title": "OwnEdge Appliance Configuration v2",
+  "type": "object",
+  "required": ["version", "appliance_id", "cluster", "nodes", "deployments", "system", "storage"],
+  "properties": {
+    "version": { "const": 2 },
+    "appliance_id": { "type": "string", "minLength": 1 },
+    "cluster": {
+      "type": "object",
+      "required": ["serving_mode", "head_node_id", "head_epoch", "global_defaults"],
+      "properties": {
+        "serving_mode": { "enum": ["distributed", "standalone"] },
+        "head_node_id": { "type": "string" },
+        "head_epoch": { "type": "integer", "minimum": 1 },
+        "global_defaults": {
+          "type": "object",
+          "properties": { "autoscale_enabled": { "type": "boolean" } }
+        }
+      }
+    },
+    "nodes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "hostname", "ip", "is_head", "gpus"],
+        "properties": {
+          "id": { "type": "string" },
+          "hostname": { "type": "string" },
+          "ip": { "type": "string" },
+          "is_head": { "type": "boolean" },
+          "gpus_reserved_for_system": { "type": "integer", "minimum": 0 },
+          "labels": { "type": "array", "items": { "type": "string" } },
+          "status": { "enum": ["online", "offline", "degraded"] },
+          "gpus": { "type": "array" }
+        }
+      }
+    },
+    "deployments": { "type": "array" },
+    "system": { "type": "object" },
+    "storage": { "type": "object" }
+  }
+}

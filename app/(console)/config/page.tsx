@@ -54,7 +54,9 @@ export default function ConfigPage() {
           <code className="text-slate-300">/mnt/dongles/&lt;device&gt;/</code>.
           The appliance copies it to <code className="text-slate-300">/home/conf.json</code> when
           changed (see <code className="text-slate-300">usb-dongle-check.sh</code>).
-          Export below produces jq-sorted JSON compatible with that workflow.
+          v2 config includes <code className="text-slate-300">head_node_id</code>,{' '}
+          <code className="text-slate-300">head_ip</code>, and{' '}
+          <code className="text-slate-300">head_epoch</code> for head migration.
         </p>
       </Card>
 
