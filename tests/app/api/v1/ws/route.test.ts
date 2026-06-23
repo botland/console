@@ -21,7 +21,7 @@ describe('GET /api/v1/ws', () => {
   });
 
   it('streams cluster.state on connect', async () => {
-    const res = await GET();
+    const res = await GET(new Request("http://localhost"));
     expect(res.headers.get('Content-Type')).toBe('text/event-stream');
     const event = await readFirstEvent(res);
     expect(event.channel).toBe('cluster.state');
@@ -30,7 +30,7 @@ describe('GET /api/v1/ws', () => {
 
   it('emits periodic node metrics', async () => {
     vi.useFakeTimers();
-    const res = await GET();
+    const res = await GET(new Request("http://localhost"));
     const reader = res.body!.getReader();
     await reader.read();
     vi.advanceTimersByTime(3000);
@@ -42,7 +42,7 @@ describe('GET /api/v1/ws', () => {
   });
 
   it('forwards broadcast events to subscribers', async () => {
-    const res = await GET();
+    const res = await GET(new Request("http://localhost"));
     const reader = res.body!.getReader();
     await reader.read();
 

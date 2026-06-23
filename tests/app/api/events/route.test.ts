@@ -17,7 +17,7 @@ describe('GET /api/events', () => {
   beforeEach(() => resetStore());
 
   it('streams initial status as SSE', async () => {
-    const res = await GET();
+    const res = await GET(new Request("http://localhost"));
     expect(res.headers.get('Content-Type')).toBe('text/event-stream');
     const event = await readFirstEvent(res);
     expect(event.state).toBe('READY');
@@ -27,7 +27,7 @@ describe('GET /api/events', () => {
   it('cleans up interval when stream is cancelled', async () => {
     vi.useFakeTimers();
     const clearIntervalSpy = vi.spyOn(globalThis, 'clearInterval');
-    const res = await GET();
+    const res = await GET(new Request("http://localhost"));
     const reader = res.body!.getReader();
     await reader.read();
     await reader.cancel();

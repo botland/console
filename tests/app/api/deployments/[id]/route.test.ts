@@ -12,10 +12,10 @@ describe('/api/deployments/[id]', () => {
   beforeEach(() => resetStore());
 
   it('GET returns deployment or 404', async () => {
-    const ok = await GET(new NextRequest('http://localhost'), params('dep-qwen-32b'));
+    const ok = await GET(new Request('http://localhost'), params('dep-qwen-32b'));
     expect((await ok.json()).id).toBe('dep-qwen-32b');
 
-    const missing = await GET(new NextRequest('http://localhost'), params('missing'));
+    const missing = await GET(new Request('http://localhost'), params('missing'));
     expect(missing.status).toBe(404);
   });
 
@@ -37,7 +37,7 @@ describe('/api/deployments/[id]', () => {
   });
 
   it('DELETE removes deployment', async () => {
-    const res = await DELETE(new NextRequest('http://localhost'), params('dep-llama-8b'));
+    const res = await DELETE(new Request('http://localhost'), params('dep-llama-8b'));
     expect((await res.json()).deleted).toBe(true);
   });
 });

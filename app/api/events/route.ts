@@ -1,6 +1,7 @@
 import { getStatus } from '@/lib/mock/store';
+import { runWithHeadAuthority } from '@/lib/mock/gateway';
 
-export async function GET() {
+function createEventsStream() {
   const encoder = new TextEncoder();
   let interval: ReturnType<typeof setInterval> | null = null;
 
@@ -26,4 +27,8 @@ export async function GET() {
       Connection: 'keep-alive',
     },
   });
+}
+
+export async function GET(req: Request) {
+  return runWithHeadAuthority(req, async () => createEventsStream());
 }

@@ -19,12 +19,17 @@ import {
   getStorage,
   isHeadGateway,
   listDeployments,
+  getGatewayStatus,
+  ensureAgentSimulation,
+  ingestAgentHeartbeat,
+  listNodesWithAgents,
   migrateHead,
   removeMount,
   resetTestState,
   saveState,
   setConfig,
   startReconcile,
+  stopAgentSimulation,
   subscribeWs,
   updateCluster,
   updateDeployment,
@@ -34,11 +39,13 @@ import {
 
 describe('mock store', () => {
   beforeEach(() => {
+    delete process.env.APPLIANCE_LOCAL_NODE_ID;
     resetStore();
   });
 
   afterEach(() => {
     vi.useRealTimers();
+    delete process.env.APPLIANCE_LOCAL_NODE_ID;
     resetStore(false);
   });
 
@@ -175,7 +182,126 @@ describe('mock store', () => {
     expect(result.success).toBe(true);
     expect(result.impact.deployments_rescheduled).toBe(1);
     expect(getConfig().cluster.head_node_id).toBe('node-2');
+    expect(getLocalNodeId()).toBe('node-1');
+    expect(Object.values(getState().agents).every((a) => a.head_target_node_id === 'node-2')).toBe(
+      true,
+    );
     expect(messages.some((m) => (m as { channel: string }).channel === 'head.changed')).toBe(true);
+  });
+
+  it('seeds agent state for every node', () => {
+    const state = getState();
+    expect(Object.keys(state.agents)).toHaveLength(3);
+    expect(state.agents['node-1'].agent_phase).toBe('running');
+  });
+
+  it('ingests agent heartbeats on the head coordinator', () => {
+    ingestAgentHeartbeat('node-2');
+    const agent = getState().agents['node-2'];
+    expect(agent.agent_phase).toBe('running');
+    expect(agent.last_seen).toBeGreaterThan(0);
+    expect(getConfig().nodes[1].gpus[0].utilization_pct).toBeGreaterThanOrEqual(5);
+  });
+
+  it('skips heartbeat ingestion on worker gateways', () => {
+    process.env.APPLIANCE_LOCAL_NODE_ID = 'node-2';
+    resetTestState({ seed: true, clearDisk: true });
+    const before = getState().agents['node-1'].last_seen;
+    ingestAgentHeartbeat('node-1');
+    expect(getState().agents['node-1'].last_seen).toBe(before);
+  });
+
+  it('marks agents degraded when heartbeats go stale', () => {
+    const state = getState();
+    state.agents['node-2'].last_seen = Date.now() - 20_000;
+    saveState(state);
+    resetTestState({ seed: false, clearDisk: false });
+    const nodes = listNodesWithAgents();
+    expect(nodes.find((n) => n.id === 'node-2')?.agent?.agent_phase).toBe('degraded');
+  });
+
+  it('lists nodes with agent telemetry', () => {
+    const nodes = listNodesWithAgents();
+    expect(nodes[0].agent?.node_id).toBe('node-1');
+  });
+
+  it('exposes gateway status', () => {
+    const gateway = getGatewayStatus();
+    expect(gateway.is_head).toBe(true);
+    expect(gateway.head_api_url).toContain('/api');
+  });
+
+  it('marks offline node agents as idle', () => {
+    updateNode('node-3', { status: 'offline' });
+    const nodes = listNodesWithAgents();
+    expect(nodes.find((n) => n.id === 'node-3')?.agent?.agent_phase).toBe('idle');
+  });
+
+  it('applies APPLIANCE_LOCAL_NODE_ID on cold start', () => {
+    process.env.APPLIANCE_LOCAL_NODE_ID = 'node-2';
+    resetTestState({ seed: false, clearDisk: true });
+    expect(getState().local_node_id).toBe('node-2');
+  });
+
+  it('does not start duplicate agent simulation timers', () => {
+    delete process.env.APPLIANCE_DISABLE_AGENT_SIM;
+    stopAgentSimulation();
+    resetTestState({ seed: false, clearDisk: true });
+    getState();
+    ensureAgentSimulation();
+    stopAgentSimulation();
+    process.env.APPLIANCE_DISABLE_AGENT_SIM = '1';
+  });
+
+  it('runs agent simulation interval when enabled', () => {
+    vi.useFakeTimers();
+    stopAgentSimulation();
+    delete process.env.APPLIANCE_DISABLE_AGENT_SIM;
+    resetTestState({ seed: false, clearDisk: true });
+    getState();
+    const seen = getState().agents['node-1'].last_seen;
+    vi.advanceTimersByTime(6000);
+    expect(getState().agents['node-1'].last_seen).toBeGreaterThanOrEqual(seen);
+    stopAgentSimulation();
+    process.env.APPLIANCE_DISABLE_AGENT_SIM = '1';
+    vi.useRealTimers();
+  });
+
+  it('seeds idle agents for offline nodes when agents are missing on load', () => {
+    const state = getState();
+    state.config.nodes[2].status = 'offline';
+    const { agents: _agents, ...withoutAgents } = state;
+    const stateFile = path.join(process.env.APPLIANCE_CONSOLE_DATA_DIR!, 'state.json');
+    fs.writeFileSync(stateFile, JSON.stringify(withoutAgents));
+    resetTestState({ seed: false, clearDisk: false });
+    expect(getState().agents['node-3'].agent_phase).toBe('idle');
+  });
+
+  it('skips heartbeat ingestion for missing node, agent, or offline node', () => {
+    ingestAgentHeartbeat('missing');
+
+    const state = getState();
+    delete state.agents['node-2'];
+    ingestAgentHeartbeat('node-2');
+
+    updateNode('node-3', { status: 'offline' });
+    const before = getState().agents['node-3'].last_seen;
+    ingestAgentHeartbeat('node-3');
+    expect(getState().agents['node-3'].last_seen).toBe(before);
+  });
+
+  it('skips health refresh when agent record is missing', () => {
+    const state = getState();
+    delete state.agents['node-1'];
+    saveState(state);
+    resetTestState({ seed: false, clearDisk: false });
+    expect(listNodesWithAgents().find((n) => n.id === 'node-1')?.agent).toBeUndefined();
+  });
+
+  it('uses APPLIANCE_HEAD_INTERNAL_URL when set', () => {
+    process.env.APPLIANCE_HEAD_INTERNAL_URL = 'http://head-internal:3000/';
+    expect(getGatewayStatus().head_api_url).toBe('http://head-internal:3000/api');
+    delete process.env.APPLIANCE_HEAD_INTERNAL_URL;
   });
 
   it('rejects head migration for missing or offline nodes', () => {

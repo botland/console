@@ -52,8 +52,24 @@ Export `conf.json` includes `head_node_id`, `head_ip`, and `head_epoch` for USB 
 | `GET /api/v1/ws` | SSE: `cluster.state`, `node.metrics`, `head.changed`, `events` |
 | `GET /api/config/export` | `conf.json` download |
 
-## Future integration
+## Multi-node mock (Phase 2)
 
-1. `appliance-agent` on each node (telemetry + heartbeat to head)
-2. Worker gateways proxy `/api/v1` to head
+Simulated agents on every node push GPU telemetry to the head coordinator every 5s. Worker gateways proxy API calls to the head unless they are the coordinator.
+
+```bash
+# Run as worker node (proxies to head at head_ip:3000)
+APPLIANCE_LOCAL_NODE_ID=node-2 npm run dev
+
+# Optional overrides
+APPLIANCE_HEAD_INTERNAL_URL=http://127.0.0.1:3000   # proxy target (dev)
+APPLIANCE_GATEWAY_INTERNAL=1                        # same-process delegate (tests)
+APPLIANCE_DISABLE_AGENT_SIM=1                       # disable heartbeat loop
+```
+
+`GET /api/status` includes `gateway: { local_node_id, is_head, head_api_url }`.
+
+## Future integration (Phase 3+)
+
+1. `appliance-agent` on each node (real telemetry + heartbeat to head)
+2. Coordinator service on head (replaces in-memory mock store)
 3. Private runtime adapter to `inferedge-phase1` (no tech names in public API)

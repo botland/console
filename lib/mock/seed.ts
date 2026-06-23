@@ -1,4 +1,10 @@
-import type { ApplianceConfig, HeadChangedPayload, MockState, ReconcileEvent } from '@/lib/types';
+import type {
+  ApplianceConfig,
+  HeadChangedPayload,
+  MockState,
+  NodeAgentState,
+  ReconcileEvent,
+} from '@/lib/types';
 
 const now = Date.now();
 
@@ -137,10 +143,28 @@ function headPayload(config: ApplianceConfig): HeadChangedPayload {
   };
 }
 
+function seedAgents(config: ApplianceConfig): Record<string, NodeAgentState> {
+  const now = Date.now();
+  const headId = config.cluster.head_node_id;
+  const agents: Record<string, NodeAgentState> = {};
+  for (const node of config.nodes) {
+    agents[node.id] = {
+      node_id: node.id,
+      last_seen: now,
+      heartbeat_ts: now,
+      agent_phase: node.status === 'online' ? 'running' : 'idle',
+      head_target_node_id: headId,
+    };
+  }
+  return agents;
+}
+
 export function createSeedState(): MockState {
+  const config = structuredClone(seedConfig);
   return {
-    config: structuredClone(seedConfig),
+    config,
     local_node_id: 'node-1',
+    agents: seedAgents(config),
     status: {
       state: 'READY',
       last_error: null,

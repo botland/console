@@ -10,7 +10,7 @@ describe('/api/system', () => {
   beforeEach(() => resetStore());
 
   it('GET returns system config', async () => {
-    const res = await GET();
+    const res = await GET(new Request("http://localhost"));
     expect((await res.json()).network.gateway).toBeTruthy();
   });
 

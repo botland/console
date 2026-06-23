@@ -3,13 +3,22 @@ import type {
   ApplianceStatus,
   ClusterConfig,
   DeploymentConfig,
+  GatewayInfo,
   MigrateHeadResult,
+  NodeAgentState,
   NodeConfig,
   PlannerRecommendation,
   StorageMount,
   SystemConfig,
   ValidationResult,
 } from '@/lib/types';
+
+export type NodeWithAgent = NodeConfig & { agent?: NodeAgentState };
+
+export type StatusResponse = ApplianceStatus & {
+  config: ApplianceConfig;
+  gateway: GatewayInfo;
+};
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init);
@@ -21,7 +30,7 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  status: () => fetchJson<ApplianceStatus & { config: ApplianceConfig }>('/api/status'),
+  status: () => fetchJson<StatusResponse>('/api/status'),
 
   getConfig: () => fetchJson<ApplianceConfig>('/api/config'),
 
@@ -90,7 +99,7 @@ export const api = {
       body: JSON.stringify({ head_node_id }),
     }),
 
-  listNodes: () => fetchJson<NodeConfig[]>('/api/nodes'),
+  listNodes: () => fetchJson<NodeWithAgent[]>('/api/nodes'),
 
   updateNode: (id: string, node: Partial<NodeConfig>) =>
     fetchJson<NodeConfig>(`/api/nodes/${id}`, {

@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 
 import { Logo } from '@/components/Logo';
+import { WorkerBanner } from '@/components/WorkerBanner';
 import { cn } from '@/lib/cn';
 
 const nav = [
@@ -59,7 +60,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
       <main className="flex-1 overflow-auto">
-        <div className="max-w-7xl mx-auto px-8 py-8">{children}</div>
+        <div className="max-w-7xl mx-auto px-8 py-8">
+          <WorkerBanner />
+          {children}
+        </div>
       </main>
     </div>
   );

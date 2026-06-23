@@ -12,7 +12,7 @@ describe('/api/cluster', () => {
   });
 
   it('GET returns cluster config', async () => {
-    const res = await GET();
+    const res = await GET(new Request("http://localhost"));
     expect((await res.json()).head_node_id).toBe('node-1');
   });
 

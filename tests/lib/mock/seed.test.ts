@@ -16,6 +16,17 @@ describe('seed', () => {
     expect(state.storage_usage.total_bytes).toBeGreaterThan(0);
   });
 
+  it('seeds idle agents for offline nodes', () => {
+    const original = seedConfig.nodes[2].status;
+    seedConfig.nodes[2].status = 'offline';
+    try {
+      const state = createSeedState();
+      expect(state.agents['node-3'].agent_phase).toBe('idle');
+    } finally {
+      seedConfig.nodes[2].status = original;
+    }
+  });
+
   it('falls back to network head ip when head node id is stale', () => {
     seedConfig.cluster.head_node_id = 'missing-head';
     const state = createSeedState();

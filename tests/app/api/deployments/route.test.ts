@@ -10,7 +10,7 @@ describe('/api/deployments', () => {
   beforeEach(() => resetStore());
 
   it('lists deployments', async () => {
-    const res = await GET();
+    const res = await GET(new Request("http://localhost"));
     const body = await res.json();
     expect(body.length).toBe(2);
   });

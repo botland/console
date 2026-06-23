@@ -7,22 +7,37 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { NodeBadge } from '@/components/StatusBadge';
 import { Button, Card, Input, Label, PageHeader } from '@/components/ui';
 import { api } from '@/lib/api';
+import type { NodeWithAgent } from '@/lib/api';
 import type { NodeConfig } from '@/lib/types';
 
 export default function NodesPage() {
-  const [nodes, setNodes] = useState<NodeConfig[]>([]);
+  const [nodes, setNodes] = useState<NodeWithAgent[]>([]);
+  const [enabledDeployments, setEnabledDeployments] = useState(0);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState<Partial<NodeConfig>>({});
   const [headCandidate, setHeadCandidate] = useState<string | null>(null);
 
-  const load = () => api.listNodes().then(setNodes).catch(console.error);
+  const load = () =>
+    Promise.all([api.listNodes(), api.getConfig()])
+      .then(([nodeList, config]) => {
+        setNodes(nodeList);
+        setEnabledDeployments(config.deployments.filter((d) => d.enabled).length);
+      })
+      .catch(console.error);
 
   useEffect(() => {
     load();
   }, []);
 
-  const startEdit = (node: NodeConfig) => {
+  const formatLastSeen = (ts?: number) => {
+    if (!ts) return 'unknown';
+    const sec = Math.max(0, Math.round((Date.now() - ts) / 1000));
+    if (sec < 60) return `${sec}s ago`;
+    return `${Math.round(sec / 60)}m ago`;
+  };
+
+  const startEdit = (node: NodeWithAgent) => {
     setEditing(node.id);
     setDraft({
       gpus_reserved_for_system: node.gpus_reserved_for_system,
@@ -70,6 +85,12 @@ export default function NodesPage() {
                 <div className="mt-1 text-xs text-slate-500">
                   {node.gpus.length} GPU(s)
                   {node.labels.length > 0 && ` · ${node.labels.join(', ')}`}
+                  {node.agent && (
+                    <>
+                      {' '}
+                      · agent {node.agent.agent_phase} · seen {formatLastSeen(node.agent.last_seen)}
+                    </>
+                  )}
                 </div>
               </div>
               <div className="flex gap-2">
@@ -164,7 +185,7 @@ export default function NodesPage() {
       <ConfirmDialog
         open={!!headCandidate}
         title="Migrate head to this node?"
-        message="The control plane will move to this node. All workers will reconnect. Active deployments may reschedule."
+        message={`The control plane will move to this node. ${enabledDeployments} deployment(s) will reschedule. All workers will reconnect to the new head.`}
         confirmLabel="Migrate head"
         danger
         onConfirm={confirmSetHead}

@@ -1,6 +1,7 @@
+import { runWithHeadAuthority } from '@/lib/mock/gateway';
 import { getStatus, subscribeWs } from '@/lib/mock/store';
 
-export async function GET() {
+function createWsStream() {
   const encoder = new TextEncoder();
   let unsubscribe: (() => void) | null = null;
   let metricsTimer: ReturnType<typeof setInterval> | null = null;
@@ -32,4 +33,8 @@ export async function GET() {
       Connection: 'keep-alive',
     },
   });
+}
+
+export async function GET(req: Request) {
+  return runWithHeadAuthority(req, async () => createWsStream());
 }

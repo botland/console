@@ -6,9 +6,11 @@ import type {
   ApplianceConfig,
   ApplianceStatus,
   DeploymentConfig,
+  GatewayInfo,
   HeadChangedPayload,
   MigrateHeadResult,
   MockState,
+  NodeAgentState,
   NodeConfig,
   ReconcileEvent,
   StorageMount,
@@ -26,7 +28,11 @@ function getStateFile(): string {
 
 let memoryState: MockState | null = null;
 let reconcileTimer: ReturnType<typeof setTimeout> | null = null;
+let agentTimer: ReturnType<typeof setInterval> | null = null;
 const wsListeners: Set<(payload: unknown) => void> = new Set();
+
+const AGENT_INTERVAL_MS = 5000;
+const AGENT_STALE_MS = 15000;
 
 function ensureDir() {
   const dataDir = getDataDir();
@@ -55,8 +61,27 @@ function migrateStateOnLoad(state: MockState): MockState {
   if (!state.local_node_id) {
     state.local_node_id = state.config.cluster.head_node_id;
   }
+  if (!state.agents) {
+    state.agents = seedAgentsFromConfig(state.config);
+  }
   syncHeadFlags(state.config);
   return state;
+}
+
+function seedAgentsFromConfig(config: ApplianceConfig): Record<string, NodeAgentState> {
+  const now = Date.now();
+  const headId = config.cluster.head_node_id;
+  const agents: Record<string, NodeAgentState> = {};
+  for (const node of config.nodes) {
+    agents[node.id] = {
+      node_id: node.id,
+      last_seen: now,
+      heartbeat_ts: now,
+      agent_phase: node.status === 'online' ? 'running' : 'idle',
+      head_target_node_id: headId,
+    };
+  }
+  return agents;
 }
 
 function persist(state: MockState) {
@@ -91,7 +116,15 @@ function broadcast(channel: string, data: unknown) {
 export function getState(): MockState {
   if (memoryState) return memoryState;
   memoryState = loadFromDisk() ?? createSeedState();
+  applyLocalNodeFromEnv(memoryState);
+  ensureAgentSimulation();
   return memoryState;
+}
+
+function applyLocalNodeFromEnv(state: MockState): void {
+  if (process.env.APPLIANCE_LOCAL_NODE_ID) {
+    state.local_node_id = process.env.APPLIANCE_LOCAL_NODE_ID;
+  }
 }
 
 export function saveState(state: MockState): MockState {
@@ -215,13 +248,17 @@ export function migrateHead(newHeadNodeId: string): MigrateHeadResult {
   state.config.cluster.head_epoch += 1;
   syncHeadFlags(state.config);
   state.status.head = headPayload(state.config);
-  state.local_node_id = newHeadNodeId;
+  repointAgentsToHead(state, newHeadNodeId);
 
   addEvent(
     `Head migrated from ${fromNode?.hostname ?? fromId} to ${newHead.hostname} (epoch ${state.config.cluster.head_epoch})`,
     'warn',
   );
   broadcast('head.changed', state.status.head);
+  addEvent(
+    `Workers repointed to head at ${state.status.head.head_ip} (epoch ${state.config.cluster.head_epoch})`,
+    'info',
+  );
   saveState(state);
   startReconcile(`Head migration — rescheduling ${enabledCount} deployment(s)`);
 
@@ -318,26 +355,115 @@ export function removeMount(id: string): boolean {
   return false;
 }
 
-export function getStatus(): ApplianceStatus {
-  const state = getState();
-  for (const node of state.config.nodes) {
-    for (const gpu of node.gpus) {
-      const base = gpu.utilization_pct ?? 50;
-      const delta = (Math.sin(Date.now() / 8000 + gpu.index) + 1) * 5;
-      gpu.utilization_pct = Math.min(95, Math.max(5, Math.round(base * 0.95 + delta)));
-    }
+function repointAgentsToHead(state: MockState, headNodeId: string): void {
+  for (const agent of Object.values(state.agents)) {
+    agent.head_target_node_id = headNodeId;
   }
-  state.status.head = headPayload(state.config);
-  broadcast('node.metrics', {
+}
+
+function nodeMetricsPayload(state: MockState) {
+  return {
     nodes: state.config.nodes.map((n) => ({
       id: n.id,
       gpus: n.gpus.map((g) => ({
         index: g.index,
         utilization_pct: g.utilization_pct,
       })),
+      agent: state.agents[n.id],
     })),
-  });
+  };
+}
+
+export function ingestAgentHeartbeat(nodeId: string): void {
+  if (!isHeadCoordinator()) return;
+
+  const state = getState();
+  const node = state.config.nodes.find((n) => n.id === nodeId);
+  const agent = state.agents[nodeId];
+  if (!node || !agent || node.status === 'offline') return;
+
+  for (const gpu of node.gpus) {
+    const base = gpu.utilization_pct ?? 50;
+    const delta = (Math.sin(Date.now() / 8000 + gpu.index + nodeId.length) + 1) * 5;
+    gpu.utilization_pct = Math.min(95, Math.max(5, Math.round(base * 0.95 + delta)));
+  }
+
+  const now = Date.now();
+  agent.last_seen = now;
+  agent.heartbeat_ts = now;
+  agent.agent_phase = 'running';
+  agent.head_target_node_id = state.config.cluster.head_node_id;
+
+  broadcast('node.metrics', nodeMetricsPayload(state));
+}
+
+function refreshAgentHealth(state: MockState): void {
+  const now = Date.now();
+  for (const node of state.config.nodes) {
+    const agent = state.agents[node.id];
+    if (!agent) continue;
+    if (node.status === 'offline') {
+      agent.agent_phase = 'idle';
+      continue;
+    }
+    if (now - agent.last_seen > AGENT_STALE_MS) {
+      agent.agent_phase = 'degraded';
+    }
+  }
+}
+
+export function tickAgents(): void {
+  const state = getState();
+  refreshAgentHealth(state);
+  if (!isHeadCoordinator()) return;
+  for (const node of state.config.nodes) {
+    if (node.status === 'online') {
+      ingestAgentHeartbeat(node.id);
+    }
+  }
+}
+
+export function ensureAgentSimulation(): void {
+  if (process.env.APPLIANCE_DISABLE_AGENT_SIM === '1') return;
+  if (agentTimer) return;
+  tickAgents();
+  agentTimer = setInterval(tickAgents, AGENT_INTERVAL_MS);
+}
+
+export function stopAgentSimulation(): void {
+  if (agentTimer) {
+    clearInterval(agentTimer);
+    agentTimer = null;
+  }
+}
+
+export function getStatus(): ApplianceStatus {
+  const state = getState();
+  tickAgents();
+  state.status.head = headPayload(state.config);
   return state.status;
+}
+
+export function listNodesWithAgents(): Array<NodeConfig & { agent?: NodeAgentState }> {
+  const state = getState();
+  refreshAgentHealth(state);
+  return state.config.nodes.map((node) => ({
+    ...node,
+    agent: state.agents[node.id],
+  }));
+}
+
+export function getGatewayStatus(): GatewayInfo {
+  const config = getConfig();
+  const port = process.env.APPLIANCE_PORT ?? '3000';
+  const base =
+    process.env.APPLIANCE_HEAD_INTERNAL_URL?.replace(/\/$/, '') ??
+    `http://${config.system.network.head_ip}:${port}`;
+  return {
+    local_node_id: getLocalNodeId(),
+    is_head: isHeadCoordinator(),
+    head_api_url: `${base}/api`,
+  };
 }
 
 export function getStorage() {
@@ -345,12 +471,20 @@ export function getStorage() {
 }
 
 export function getLocalNodeId(): string {
+  if (process.env.APPLIANCE_LOCAL_NODE_ID) {
+    return process.env.APPLIANCE_LOCAL_NODE_ID;
+  }
   return getState().local_node_id;
 }
 
-export function isHeadGateway(): boolean {
+export function isHeadCoordinator(): boolean {
   const state = getState();
-  return state.local_node_id === state.config.cluster.head_node_id;
+  return getLocalNodeId() === state.config.cluster.head_node_id;
+}
+
+/** @deprecated use isHeadCoordinator */
+export function isHeadGateway(): boolean {
+  return isHeadCoordinator();
 }
 
 /** Reset in-memory and on-disk state — for tests only. */
@@ -364,6 +498,7 @@ export function resetTestState(options?: {
     clearTimeout(reconcileTimer);
     reconcileTimer = null;
   }
+  stopAgentSimulation();
   wsListeners.clear();
   memoryState = null;
   const stateFile = getStateFile();

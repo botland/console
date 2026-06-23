@@ -10,7 +10,7 @@ describe('/api/config', () => {
   beforeEach(() => resetStore());
 
   it('GET returns current config', async () => {
-    const res = await GET();
+    const res = await GET(new Request("http://localhost"));
     const body = await res.json();
     expect(body.version).toBe(2);
   });

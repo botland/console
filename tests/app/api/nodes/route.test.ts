@@ -8,9 +8,10 @@ describe('GET /api/nodes', () => {
   beforeEach(() => resetStore());
 
   it('lists nodes', async () => {
-    const res = await GET();
+    const res = await GET(new Request("http://localhost"));
     const body = await res.json();
     expect(body).toHaveLength(3);
     expect(body[0].hostname).toBeTruthy();
+    expect(body[0].agent?.node_id).toBe(body[0].id);
   });
 });

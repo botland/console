@@ -8,7 +8,7 @@ describe('GET /api/config/export', () => {
   beforeEach(() => resetStore());
 
   it('exports sorted conf.json attachment', async () => {
-    const res = await GET();
+    const res = await GET(new Request("http://localhost"));
     expect(res.headers.get('Content-Disposition')).toContain('conf.json');
     const body = await res.text();
     const parsed = JSON.parse(body) as { appliance_id: string; version: number };

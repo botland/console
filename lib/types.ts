@@ -133,11 +133,29 @@ export interface ClusterInventory {
   head_online: boolean;
 }
 
+export type AgentPhase = 'idle' | 'running' | 'degraded';
+
+export interface NodeAgentState {
+  node_id: string;
+  last_seen: number;
+  heartbeat_ts: number;
+  agent_phase: AgentPhase;
+  /** Head coordinator this agent sends heartbeats to */
+  head_target_node_id: string;
+}
+
+export interface GatewayInfo {
+  local_node_id: string;
+  is_head: boolean;
+  head_api_url: string;
+}
+
 export interface MockState {
   config: ApplianceConfig;
   status: ApplianceStatus;
   /** Simulates which node this gateway instance runs on */
   local_node_id: string;
+  agents: Record<string, NodeAgentState>;
   storage_usage: {
     total_bytes: number;
     used_bytes: number;
