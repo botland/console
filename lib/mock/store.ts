@@ -16,16 +16,22 @@ import type {
 
 import { createSeedState } from './seed';
 
-const DATA_DIR = path.join(process.cwd(), '.data');
-const STATE_FILE = path.join(DATA_DIR, 'state.json');
+function getDataDir(): string {
+  return process.env.APPLIANCE_CONSOLE_DATA_DIR ?? path.join(process.cwd(), '.data');
+}
+
+function getStateFile(): string {
+  return path.join(getDataDir(), 'state.json');
+}
 
 let memoryState: MockState | null = null;
 let reconcileTimer: ReturnType<typeof setTimeout> | null = null;
 const wsListeners: Set<(payload: unknown) => void> = new Set();
 
 function ensureDir() {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
+  const dataDir = getDataDir();
+  if (!fs.existsSync(dataDir)) {
+    fs.mkdirSync(dataDir, { recursive: true });
   }
 }
 
@@ -55,14 +61,15 @@ function migrateStateOnLoad(state: MockState): MockState {
 
 function persist(state: MockState) {
   ensureDir();
-  fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
+  fs.writeFileSync(getStateFile(), JSON.stringify(state, null, 2));
   memoryState = state;
 }
 
 function loadFromDisk(): MockState | null {
   try {
-    if (fs.existsSync(STATE_FILE)) {
-      const raw = fs.readFileSync(STATE_FILE, 'utf-8');
+    const stateFile = getStateFile();
+    if (fs.existsSync(stateFile)) {
+      const raw = fs.readFileSync(stateFile, 'utf-8');
       return migrateStateOnLoad(JSON.parse(raw) as MockState);
     }
   } catch {
@@ -344,4 +351,30 @@ export function getLocalNodeId(): string {
 export function isHeadGateway(): boolean {
   const state = getState();
   return state.local_node_id === state.config.cluster.head_node_id;
+}
+
+/** Reset in-memory and on-disk state — for tests only. */
+export function resetTestState(options?: {
+  seed?: boolean;
+  persist?: boolean;
+  clearDisk?: boolean;
+}): void {
+  const { seed = true, persist: shouldPersist = false, clearDisk = true } = options ?? {};
+  if (reconcileTimer) {
+    clearTimeout(reconcileTimer);
+    reconcileTimer = null;
+  }
+  wsListeners.clear();
+  memoryState = null;
+  const stateFile = getStateFile();
+  if (clearDisk && fs.existsSync(stateFile)) {
+    fs.unlinkSync(stateFile);
+  }
+  if (seed) {
+    const next = createSeedState();
+    memoryState = next;
+    if (shouldPersist) {
+      persist(next);
+    }
+  }
 }

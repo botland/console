@@ -2,6 +2,8 @@ import { getStatus } from '@/lib/mock/store';
 
 export async function GET() {
   const encoder = new TextEncoder();
+  let interval: ReturnType<typeof setInterval> | null = null;
+
   const stream = new ReadableStream({
     start(controller) {
       const send = () => {
@@ -10,10 +12,10 @@ export async function GET() {
         controller.enqueue(encoder.encode(data));
       };
       send();
-      const interval = setInterval(send, 3000);
-      const cleanup = () => clearInterval(interval);
-      // @ts-expect-error cancel exists on ReadableStreamDefaultController in runtime
-      controller.cancel = cleanup;
+      interval = setInterval(send, 3000);
+    },
+    cancel() {
+      if (interval) clearInterval(interval);
     },
   });
 

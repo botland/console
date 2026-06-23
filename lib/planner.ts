@@ -66,14 +66,7 @@ export function deriveRecommendation(
   }
 
   if (mode === 'standalone') {
-    if (gpus_per_instance > perNode) {
-      gpus_per_instance = perNode;
-      warnings.push(`Capped at ${perNode} GPUs per instance (single-node limit in standalone mode)`);
-    }
-    if (nodes_per_instance > 1) {
-      nodes_per_instance = 1;
-      warnings.push('Multi-node instances require distributed mode');
-    }
+    nodes_per_instance = 1;
   } else if (gpus >= 8 && deployment.user_intent.scale === 'large') {
     nodes_per_instance = 2;
     warnings.push('Large scale may span multiple nodes in distributed mode');
