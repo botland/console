@@ -32,17 +32,17 @@ describe('gateway', () => {
     expect(isCoordinatorRequest(new Request('http://localhost'))).toBe(false);
   });
 
-  it('reports head gateway info on head node', () => {
-    const info = getGatewayInfo();
+  it('reports head gateway info on head node', async () => {
+    const info = await getGatewayInfo();
     expect(info.is_head).toBe(true);
     expect(info.local_node_id).toBe('node-1');
     expect(info.head_api_url).toContain('192.168.1.10');
   });
 
-  it('reports worker role when local node is not head', () => {
+  it('reports worker role when local node is not head', async () => {
     process.env.APPLIANCE_LOCAL_NODE_ID = 'node-2';
     resetTestState({ seed: true, clearDisk: true });
-    const info = getGatewayInfo();
+    const info = await getGatewayInfo();
     expect(info.is_head).toBe(false);
     expect(info.local_node_id).toBe('node-2');
   });
@@ -74,8 +74,9 @@ describe('gateway', () => {
     );
 
     const res = await proxyToHead(new Request('http://localhost:3000/api/nodes'));
+    const headBase = await getHeadApiBase();
     expect(fetch).toHaveBeenCalledWith(
-      expect.stringContaining(`${getHeadApiBase()}/api/nodes`),
+      expect.stringContaining(`${headBase}/api/nodes`),
       expect.objectContaining({ method: 'GET' }),
     );
     expect((await res.json()).ok).toBe(true);
@@ -129,9 +130,9 @@ describe('gateway', () => {
     expect(await res.text()).toBe('remote');
   });
 
-  it('uses custom head internal url', () => {
+  it('uses custom head internal url', async () => {
     process.env.APPLIANCE_HEAD_INTERNAL_URL = 'http://10.0.0.99:4000';
-    expect(getHeadApiBase()).toBe('http://10.0.0.99:4000');
-    void getConfig();
+    expect(await getHeadApiBase()).toBe('http://10.0.0.99:4000');
+    await getConfig();
   });
 });

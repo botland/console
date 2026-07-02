@@ -1,17 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { runWithHeadAuthority } from '@/lib/mock/gateway';
-import { getConfig, setConfig } from '@/lib/mock/store';
+import { getConfig, setConfig } from '@/lib/runtime';
+import { runWithHeadAuthority } from '@/lib/runtime/gateway';
 
 export async function GET(req: Request) {
-  return runWithHeadAuthority(req, async () => NextResponse.json(getConfig()));
+  return runWithHeadAuthority(req, async () => NextResponse.json(await getConfig()));
 }
 
 export async function PUT(req: NextRequest) {
   return runWithHeadAuthority(req, async () => {
     try {
       const body = await req.json();
-      const config = setConfig(body);
+      const config = await setConfig(body);
       return NextResponse.json(config);
     } catch (e) {
       return NextResponse.json(

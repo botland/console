@@ -1,7 +1,7 @@
-import { runWithHeadAuthority } from '@/lib/mock/gateway';
-import { getStatus, subscribeWs } from '@/lib/mock/store';
+import { getStatus, isInferedgeRuntime, proxyWsStream, subscribeWs } from '@/lib/runtime';
+import { runWithHeadAuthority } from '@/lib/runtime/gateway';
 
-function createWsStream() {
+function createMockWsStream() {
   const encoder = new TextEncoder();
   let unsubscribe: (() => void) | null = null;
   let metricsTimer: ReturnType<typeof setInterval> | null = null;
@@ -12,12 +12,16 @@ function createWsStream() {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
       };
 
-      send({ channel: 'cluster.state', data: getStatus() });
+      void getStatus().then((status) => {
+        send({ channel: 'cluster.state', data: status });
+      });
 
       unsubscribe = subscribeWs((msg) => send(msg));
 
       metricsTimer = setInterval(() => {
-        send({ channel: 'node.metrics', data: getStatus() });
+        void getStatus().then((status) => {
+          send({ channel: 'node.metrics', data: status });
+        });
       }, 3000);
     },
     cancel() {
@@ -36,5 +40,10 @@ function createWsStream() {
 }
 
 export async function GET(req: Request) {
-  return runWithHeadAuthority(req, async () => createWsStream());
+  return runWithHeadAuthority(req, async () => {
+    if (isInferedgeRuntime()) {
+      return proxyWsStream();
+    }
+    return createMockWsStream();
+  });
 }

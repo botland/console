@@ -8,6 +8,7 @@ const testDataRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'appliance-console-te
 process.env.APPLIANCE_CONSOLE_DATA_DIR = testDataRoot;
 process.env.APPLIANCE_DISABLE_AGENT_SIM = '1';
 process.env.APPLIANCE_GATEWAY_INTERNAL = '1';
+process.env.APPLIANCE_RUNTIME = 'mock';
 
 beforeEach(() => {
   vi.useRealTimers();
