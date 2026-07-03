@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { runWithHeadAuthority } from '@/lib/mock/gateway';
-import { migrateHead } from '@/lib/mock/store';
+import { migrateHead } from '@/lib/runtime';
+import { runWithHeadAuthority } from '@/lib/runtime/gateway';
 
 export async function POST(req: NextRequest) {
   return runWithHeadAuthority(req, async () => {
@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
     if (!body.head_node_id) {
       return NextResponse.json({ error: 'head_node_id required' }, { status: 400 });
     }
-    const result = migrateHead(body.head_node_id);
+    const result = await migrateHead(body.head_node_id);
     if (!result.success) {
       return NextResponse.json(result, { status: 400 });
     }

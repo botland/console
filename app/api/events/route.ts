@@ -1,5 +1,5 @@
-import { getStatus } from '@/lib/mock/store';
-import { runWithHeadAuthority } from '@/lib/mock/gateway';
+import { getStatus } from '@/lib/runtime';
+import { runWithHeadAuthority } from '@/lib/runtime/gateway';
 
 function createEventsStream() {
   const encoder = new TextEncoder();
@@ -7,13 +7,15 @@ function createEventsStream() {
 
   const stream = new ReadableStream({
     start(controller) {
-      const send = () => {
-        const status = getStatus();
+      const send = async () => {
+        const status = await getStatus();
         const data = `data: ${JSON.stringify(status)}\n\n`;
         controller.enqueue(encoder.encode(data));
       };
-      send();
-      interval = setInterval(send, 3000);
+      void send();
+      interval = setInterval(() => {
+        void send();
+      }, 3000);
     },
     cancel() {
       if (interval) clearInterval(interval);

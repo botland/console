@@ -68,8 +68,40 @@ APPLIANCE_DISABLE_AGENT_SIM=1                       # disable heartbeat loop
 
 `GET /api/status` includes `gateway: { local_node_id, is_head, head_api_url }`.
 
-## Future integration (Phase 3+)
+## Backend integration
 
-1. `appliance-agent` on each node (real telemetry + heartbeat to head)
-2. Coordinator service on head (replaces in-memory mock store)
-3. Private runtime adapter to `inferedge-phase1` (no tech names in public API)
+### Unified Docker stack (recommended)
+
+```bash
+cd inferedge-phase1
+cp .env.example .env
+./scripts/compose.sh up -d --build
+```
+
+Open [http://localhost/](http://localhost/) (Traefik → console). Management API: [http://localhost/api/status](http://localhost/api/status).
+
+### Local dev (console + controller separately)
+
+By default `npm run dev` uses **mock mode**. To point at a running controller:
+
+```bash
+# Terminal 1
+cd inferedge-phase1 && ./scripts/compose.sh up -d controller traefik litellm
+
+# Terminal 2
+cd appliance-console
+APPLIANCE_RUNTIME=inferedge \
+APPLIANCE_CONTROLLER_URL=http://127.0.0.1:8080 \
+APPLIANCE_CONTROLLER_TOKEN=change-me-in-production \
+npm run dev
+```
+
+| Env | Default | Description |
+|-----|---------|-------------|
+| `APPLIANCE_RUNTIME` | `mock` | `mock` or `inferedge` |
+| `APPLIANCE_CONTROLLER_URL` | `http://127.0.0.1:8080` | inferedge controller base URL |
+| `APPLIANCE_CONTROLLER_TOKEN` | — | Bearer token for protected controller endpoints |
+
+With `APPLIANCE_RUNTIME=inferedge` (default in Docker), all console `/api/*` routes are wired to the controller.
+
+For integration status and E2E testing, see the [root README](../README.md#unified-appliance-phase-35).

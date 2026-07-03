@@ -1,15 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { runWithHeadAuthority } from '@/lib/mock/gateway';
-import { setConfig, startReconcile } from '@/lib/mock/store';
+import { importConfig } from '@/lib/runtime';
+import { runWithHeadAuthority } from '@/lib/runtime/gateway';
 
 export async function POST(req: NextRequest) {
   return runWithHeadAuthority(req, async () => {
     try {
       const body = await req.json();
-      setConfig(body);
-      startReconcile('Configuration imported — applying changes');
-      return NextResponse.json({ applied: true });
+      const result = await importConfig(body);
+      if (!result.applied) {
+        return NextResponse.json(result, { status: 400 });
+      }
+      return NextResponse.json(result);
     } catch (e) {
       return NextResponse.json(
         { applied: false, error: e instanceof Error ? e.message : 'Invalid JSON' },
