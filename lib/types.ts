@@ -24,8 +24,14 @@ export interface NodeConfig {
   gpus: GpuDevice[];
 }
 
+export type ComputeBackend = 'federation' | 'cluster';
+export type FederationLayout = 'replicated' | 'diverse';
+
 export interface ClusterConfig {
   serving_mode: ServingMode;
+  compute_backend?: ComputeBackend;
+  federation_layout?: FederationLayout;
+  head_gpu?: boolean;
   head_node_id: string;
   head_epoch: number;
   global_defaults: {
@@ -52,6 +58,15 @@ export interface DeploymentParallelism {
   autoscaling: AutoscalingConfig | null;
 }
 
+export interface DeploymentPlacementTarget {
+  node_id: string;
+  gpu_indices: number[];
+}
+
+export interface DeploymentPlacement {
+  targets: DeploymentPlacementTarget[];
+}
+
 export interface DeploymentConfig {
   id: string;
   display_name: string;
@@ -62,8 +77,13 @@ export interface DeploymentConfig {
     scale: ScalePreset;
   };
   parallelism: DeploymentParallelism;
+  placement?: DeploymentPlacement;
   status: DeploymentStatus;
 }
+
+export type OrchestrationConfig = ClusterConfig & {
+  federation_auto_placement?: boolean;
+};
 
 export interface SystemConfig {
   network: {
@@ -113,6 +133,13 @@ export interface HeadChangedPayload {
   head_epoch: number;
 }
 
+export interface ActualRuntimeStatus {
+  health?: string;
+  exit_code?: number | null;
+  log_snippet?: string | null;
+  current_model?: string | null;
+}
+
 export interface ApplianceStatus {
   state: ApplianceState;
   last_error: string | null;
@@ -123,6 +150,7 @@ export interface ApplianceStatus {
     bytes: number;
     file: string;
   };
+  actual?: ActualRuntimeStatus;
 }
 
 export interface ClusterInventory {

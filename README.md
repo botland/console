@@ -48,7 +48,9 @@ Export `conf.json` includes `head_node_id`, `head_ip`, and `head_epoch` for USB 
 |----------|-------------|
 | `GET /api/status` | State + config |
 | `POST /api/deployments/validate` | Hardware feasibility check |
-| `POST /api/cluster/migrate-head` | Head migration |
+| `GET/PUT /api/orchestration` | Topology and backend settings |
+| `POST /api/orchestration/migrate-head` | Head migration |
+| `GET/PUT /api/cluster` | Deprecated alias of orchestration |
 | `GET /api/v1/ws` | SSE: `cluster.state`, `node.metrics`, `head.changed`, `events` |
 | `GET /api/config/export` | `conf.json` download |
 

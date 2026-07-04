@@ -19,7 +19,7 @@ import { cn } from '@/lib/cn';
 const nav = [
   { href: '/', label: 'Overview', icon: LayoutDashboard },
   { href: '/deployments', label: 'Deployments', icon: Box },
-  { href: '/cluster', label: 'Cluster', icon: Network },
+  { href: '/orchestration', label: 'Orchestration', icon: Network },
   { href: '/nodes', label: 'Nodes', icon: Server },
   { href: '/storage', label: 'Storage', icon: HardDrive },
   { href: '/system', label: 'System', icon: Settings },

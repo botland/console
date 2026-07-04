@@ -12,6 +12,9 @@
       "required": ["serving_mode", "head_node_id", "head_epoch", "global_defaults"],
       "properties": {
         "serving_mode": { "enum": ["distributed", "standalone"] },
+        "compute_backend": { "enum": ["federation", "cluster"] },
+        "federation_layout": { "enum": ["replicated", "diverse"] },
+        "head_gpu": { "type": "boolean" },
         "head_node_id": { "type": "string" },
         "head_epoch": { "type": "integer", "minimum": 1 },
         "global_defaults": {

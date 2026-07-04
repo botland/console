@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 
+import { normalizeClusterPatch } from '@/lib/orchestration';
 import { parseApplianceConfig } from '@/lib/schema';
 import type {
   ApplianceConfig,
@@ -202,7 +203,7 @@ export function updateCluster(partial: Partial<ApplianceConfig['cluster']>): App
     return getState().config;
   }
 
-  state.config.cluster = { ...state.config.cluster, ...partial };
+  state.config.cluster = normalizeClusterPatch(state.config.cluster, partial);
   syncHeadFlags(state.config);
   state.status.head = headPayload(state.config);
   saveState(state);

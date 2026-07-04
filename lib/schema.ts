@@ -1,5 +1,11 @@
 import { z } from 'zod';
 
+import type { ApplianceConfig } from '@/lib/types';
+
+function nullishToOptional<T extends z.ZodTypeAny>(schema: T) {
+  return schema.nullish().transform((value) => value ?? undefined);
+}
+
 const gpuSchema = z.object({
   index: z.number(),
   name: z.string(),
@@ -54,6 +60,16 @@ const deploymentSchema = z.object({
       })
       .nullable(),
   }),
+  placement: z
+    .object({
+      targets: z.array(
+        z.object({
+          node_id: z.string().min(1),
+          gpu_indices: z.array(z.number().min(0)).min(1),
+        }),
+      ),
+    })
+    .optional(),
   status: z.enum(['healthy', 'reconciling', 'degraded', 'stopped', 'error']),
 });
 
@@ -62,6 +78,9 @@ export const applianceConfigSchemaV2 = z.object({
   appliance_id: z.string().min(1),
   cluster: z.object({
     serving_mode: z.enum(['distributed', 'standalone']),
+    compute_backend: nullishToOptional(z.enum(['federation', 'cluster'])),
+    federation_layout: nullishToOptional(z.enum(['replicated', 'diverse'])),
+    head_gpu: nullishToOptional(z.boolean()),
     head_node_id: z.string(),
     head_epoch: z.number().min(1),
     global_defaults: z.object({
@@ -157,6 +176,7 @@ export function migrateConfigV1ToV2(raw: z.infer<typeof applianceConfigSchemaV1>
     appliance_id: raw.appliance_id,
     cluster: {
       serving_mode: serving_mode as 'distributed' | 'standalone',
+      compute_backend: serving_mode === 'distributed' ? 'cluster' : 'federation',
       head_node_id,
       head_epoch: 1,
       global_defaults: raw.cluster.global_defaults,
@@ -168,12 +188,40 @@ export function migrateConfigV1ToV2(raw: z.infer<typeof applianceConfigSchemaV1>
   };
 }
 
-export function parseApplianceConfig(input: unknown): z.infer<typeof applianceConfigSchemaV2> {
-  const v2 = applianceConfigSchemaV2.safeParse(input);
-  if (v2.success) return v2.data;
+function normalizeComputeBackend(value: unknown): 'federation' | 'cluster' | undefined {
+  if (value === 'litellm_vllm' || value === 'local' || value === 'worker_pool') return 'federation';
+  if (value === 'ray_cluster') return 'cluster';
+  if (value === 'federation' || value === 'cluster') return value;
+  return undefined;
+}
+
+function nullToUndefined<T>(value: T): T | undefined {
+  return value === null ? undefined : value;
+}
+
+function normalizeConfigInput(input: unknown): unknown {
+  if (!input || typeof input !== 'object') return input;
+  const raw = input as Record<string, unknown>;
+  const cluster = raw.cluster;
+  if (!cluster || typeof cluster !== 'object') return input;
+  const clusterObj = cluster as Record<string, unknown>;
+  const backend = normalizeComputeBackend(clusterObj.compute_backend);
+  const normalizedCluster = {
+    ...clusterObj,
+    compute_backend: backend ?? nullToUndefined(clusterObj.compute_backend),
+    federation_layout: nullToUndefined(clusterObj.federation_layout),
+    head_gpu: nullToUndefined(clusterObj.head_gpu),
+  };
+  return { ...raw, cluster: normalizedCluster };
+}
+
+export function parseApplianceConfig(input: unknown): ApplianceConfig {
+  const normalized = normalizeConfigInput(input);
+  const v2 = applianceConfigSchemaV2.safeParse(normalized);
+  if (v2.success) return v2.data as ApplianceConfig;
 
   const v1 = applianceConfigSchemaV1.safeParse(input);
-  if (v1.success) return applianceConfigSchemaV2.parse(migrateConfigV1ToV2(v1.data));
+  if (v1.success) return applianceConfigSchemaV2.parse(migrateConfigV1ToV2(v1.data)) as ApplianceConfig;
 
   throw new Error('Invalid appliance configuration');
 }

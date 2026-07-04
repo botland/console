@@ -265,4 +265,57 @@ describe('validateDeployment', () => {
     const result = validateDeployment(dep, config);
     expect(result.warnings.some((w) => w.includes('Estimated model size'))).toBe(true);
   });
+
+  it('requires placement targets when federation manual placement is enabled', () => {
+    const config = minimalConfig({
+      cluster: {
+        ...minimalConfig().cluster,
+        serving_mode: 'distributed',
+        compute_backend: 'federation',
+        federation_layout: 'diverse',
+      },
+    });
+    const dep = sampleDeployment({ placement: undefined });
+    const result = validateDeployment(dep, config, {
+      ...config.cluster,
+      federation_auto_placement: false,
+    });
+    expect(result.valid).toBe(false);
+    expect(result.errors[0]).toContain('placement');
+  });
+
+  it('accepts explicit placement targets in manual federation mode', () => {
+    const config = minimalConfig({
+      cluster: {
+        ...minimalConfig().cluster,
+        serving_mode: 'distributed',
+        compute_backend: 'federation',
+        federation_layout: 'diverse',
+      },
+    });
+    const dep = sampleDeployment({
+      placement: { targets: [{ node_id: 'node-1', gpu_indices: [0] }] },
+    });
+    const result = validateDeployment(dep, config, {
+      ...config.cluster,
+      federation_auto_placement: false,
+    });
+    expect(result.valid).toBe(true);
+  });
+
+  it('skips VRAM warning for quantized repo ids', () => {
+    const config = minimalConfig({
+      nodes: [
+        {
+          ...minimalConfig().nodes[0],
+          gpus: [{ index: 0, name: 'Small GPU', vram_mb: 8192 }],
+        },
+      ],
+    });
+    const dep = sampleDeployment({
+      source: { type: 'huggingface', repo_id: 'casperhansen/llama-3-8b-instruct-awq' },
+    });
+    const result = validateDeployment(dep, config);
+    expect(result.warnings.some((w) => w.includes('Estimated model size'))).toBe(false);
+  });
 });

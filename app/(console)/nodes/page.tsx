@@ -1,34 +1,45 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { PageError, PageLoading } from '@/components/PageState';
 import { NodeBadge } from '@/components/StatusBadge';
 import { Button, Card, Input, Label, PageHeader } from '@/components/ui';
-import { api } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 import type { NodeWithAgent } from '@/lib/api';
 import type { NodeConfig } from '@/lib/types';
 
 export default function NodesPage() {
   const [nodes, setNodes] = useState<NodeWithAgent[]>([]);
   const [enabledDeployments, setEnabledDeployments] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState<Partial<NodeConfig>>({});
   const [headCandidate, setHeadCandidate] = useState<string | null>(null);
 
-  const load = () =>
-    Promise.all([api.listNodes(), api.getConfig()])
+  const load = useCallback(() => {
+    setLoading(true);
+    setError(null);
+    return Promise.all([api.listNodes(), api.getConfig()])
       .then(([nodeList, config]) => {
         setNodes(nodeList);
         setEnabledDeployments(config.deployments.filter((d) => d.enabled).length);
+        setLoading(false);
       })
-      .catch(console.error);
+      .catch((e) => {
+        setError(e instanceof ApiError ? e.message : 'Failed to load nodes');
+        setLoading(false);
+        console.error(e);
+      });
+  }, []);
 
   useEffect(() => {
     load();
-  }, []);
+  }, [load]);
 
   const formatLastSeen = (ts?: number) => {
     if (!ts) return 'unknown';
@@ -58,12 +69,22 @@ export default function NodesPage() {
     load();
   };
 
+  if (loading && nodes.length === 0 && !error) {
+    return <PageLoading />;
+  }
+
   return (
     <>
       <PageHeader
         title="Nodes"
         description="Hardware resource pool"
       />
+
+      {error && (
+        <div className="mb-6">
+          <PageError error={error} onRetry={load} />
+        </div>
+      )}
 
       <div className="space-y-4">
         {nodes.map((node) => (

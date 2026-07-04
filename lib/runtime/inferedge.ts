@@ -1,3 +1,4 @@
+import { effectiveApplianceState, hasDegradedSignals } from '@/lib/appliance-status';
 import { parseApplianceConfig } from '@/lib/schema';
 import type {
   ApplianceConfig,
@@ -30,6 +31,10 @@ interface InferedgeStatusResponse {
     level: 'info' | 'warn' | 'error';
   }>;
   actual?: {
+    health?: string;
+    exit_code?: number | null;
+    log_snippet?: string | null;
+    current_model?: string | null;
     download_bytes?: number | null;
     download_current_file?: string | null;
   };
@@ -44,8 +49,23 @@ function mapApplianceState(state: string): ApplianceState {
 }
 
 function mapStatus(raw: InferedgeStatusResponse): ApplianceStatus {
-  const downloadBytes = raw.actual?.download_bytes;
-  return {
+  const actual = raw.actual;
+  const downloadBytes = actual?.download_bytes;
+  const runtimeActual =
+    actual &&
+    (actual.health != null ||
+      actual.exit_code != null ||
+      actual.log_snippet != null ||
+      actual.current_model != null)
+      ? {
+          health: actual.health,
+          exit_code: actual.exit_code ?? null,
+          log_snippet: actual.log_snippet ?? null,
+          current_model: actual.current_model ?? null,
+        }
+      : undefined;
+
+  const mapped: ApplianceStatus = {
     state: mapApplianceState(raw.state),
     last_error: raw.last_error ?? null,
     last_reconcile_ts: raw.last_reconcile_ts ?? Date.now() / 1000,
@@ -59,10 +79,15 @@ function mapStatus(raw: InferedgeStatusResponse): ApplianceStatus {
       downloadBytes != null
         ? {
             bytes: downloadBytes,
-            file: raw.actual?.download_current_file ?? '',
+            file: actual?.download_current_file ?? '',
           }
         : undefined,
+    actual: runtimeActual,
   };
+  if (hasDegradedSignals(mapped)) {
+    mapped.state = effectiveApplianceState(mapped);
+  }
+  return mapped;
 }
 
 export async function getStatus(): Promise<ApplianceStatus> {
@@ -75,21 +100,31 @@ export async function getConfig(): Promise<ApplianceConfig> {
   return parseApplianceConfig(raw);
 }
 
-export async function getCluster(): Promise<ClusterConfig> {
-  return controllerJson<ClusterConfig>('/cluster');
+export async function getOrchestration(): Promise<ClusterConfig> {
+  return controllerJson<ClusterConfig>('/orchestration');
 }
 
-export async function updateCluster(partial: ClusterConfig): Promise<ClusterConfig> {
-  return controllerJson<ClusterConfig>('/cluster', {
+/** @deprecated Use getOrchestration */
+export async function getCluster(): Promise<ClusterConfig> {
+  return getOrchestration();
+}
+
+export async function updateOrchestration(partial: ClusterConfig): Promise<ClusterConfig> {
+  return controllerJson<ClusterConfig>('/orchestration', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(partial),
   });
 }
 
+/** @deprecated Use updateOrchestration */
+export async function updateCluster(partial: ClusterConfig): Promise<ClusterConfig> {
+  return updateOrchestration(partial);
+}
+
 export async function migrateHead(newHeadNodeId: string): Promise<MigrateHeadResult> {
   try {
-    return await controllerJson<MigrateHeadResult>('/cluster/migrate-head', {
+    return await controllerJson<MigrateHeadResult>('/orchestration/migrate-head', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ head_node_id: newHeadNodeId }),

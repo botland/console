@@ -15,16 +15,28 @@ import type {
 
 export type NodeWithAgent = NodeConfig & { agent?: NodeAgentState };
 
+export class ApiError extends Error {
+  readonly status?: number;
+
+  constructor(message: string, status?: number) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+  }
+}
+
 export type StatusResponse = ApplianceStatus & {
-  config: ApplianceConfig;
-  gateway: GatewayInfo;
+  config: ApplianceConfig | null;
+  config_error?: string;
+  gateway: GatewayInfo | null;
 };
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init);
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error((err as { error?: string }).error ?? res.statusText);
+    const message = (err as { error?: string }).error ?? res.statusText;
+    throw new ApiError(message, res.status);
   }
   return res.json() as Promise<T>;
 }
@@ -83,17 +95,28 @@ export const api = {
       body: JSON.stringify(dep),
     }),
 
-  getCluster: () => fetchJson<ClusterConfig>('/api/cluster'),
+  getOrchestration: () => fetchJson<ClusterConfig>('/api/orchestration'),
 
+  putOrchestration: (cluster: ClusterConfig) =>
+    fetchJson<ClusterConfig>('/api/orchestration', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(cluster),
+    }),
+
+  /** @deprecated Use getOrchestration */
+  getCluster: () => fetchJson<ClusterConfig>('/api/orchestration'),
+
+  /** @deprecated Use putOrchestration */
   putCluster: (cluster: ClusterConfig) =>
-    fetchJson<ClusterConfig>('/api/cluster', {
+    fetchJson<ClusterConfig>('/api/orchestration', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(cluster),
     }),
 
   migrateHead: (head_node_id: string) =>
-    fetchJson<MigrateHeadResult>('/api/cluster/migrate-head', {
+    fetchJson<MigrateHeadResult>('/api/orchestration/migrate-head', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ head_node_id }),

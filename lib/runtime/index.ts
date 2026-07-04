@@ -29,30 +29,40 @@ export async function getConfig(): Promise<ApplianceConfig> {
   return isInferedgeRuntime() ? inferedge.getConfig() : mock.getConfig();
 }
 
-export async function getCluster(): Promise<ClusterConfig> {
-  if (isInferedgeRuntime()) return inferedge.getCluster();
+export async function getOrchestration(): Promise<ClusterConfig> {
+  if (isInferedgeRuntime()) return inferedge.getOrchestration();
   return mock.getConfig().cluster;
+}
+
+/** @deprecated Use getOrchestration */
+export async function getCluster(): Promise<ClusterConfig> {
+  return getOrchestration();
 }
 
 export async function setConfig(config: unknown): Promise<ApplianceConfig> {
   return isInferedgeRuntime() ? inferedge.setConfig(config) : mock.setConfig(config);
 }
 
-export async function updateCluster(partial: Partial<ClusterConfig>): Promise<ApplianceConfig> {
+export async function updateOrchestration(partial: Partial<ClusterConfig>): Promise<ApplianceConfig> {
   if (isInferedgeRuntime()) {
     if (partial.head_node_id) {
-      const current = await inferedge.getCluster();
+      const current = await inferedge.getOrchestration();
       if (partial.head_node_id !== current.head_node_id) {
         await inferedge.migrateHead(partial.head_node_id);
         return inferedge.getConfig();
       }
     }
-    const current = await inferedge.getCluster();
-    await inferedge.updateCluster({ ...current, ...partial });
+    const current = await inferedge.getOrchestration();
+    await inferedge.updateOrchestration({ ...current, ...partial });
     const config = await inferedge.getConfig();
     return config;
   }
   return mock.updateCluster(partial);
+}
+
+/** @deprecated Use updateOrchestration */
+export async function updateCluster(partial: Partial<ClusterConfig>): Promise<ApplianceConfig> {
+  return updateOrchestration(partial);
 }
 
 export async function migrateHead(newHeadNodeId: string): Promise<MigrateHeadResult> {

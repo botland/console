@@ -6,7 +6,7 @@ import type {
   DeploymentConfig,
   SystemConfig,
 } from '@/lib/types';
-import { api } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 
 function mockFetch<T>(data: T, ok = true) {
   vi.stubGlobal(
@@ -117,9 +117,21 @@ describe('api client', () => {
     await expect(api.deleteMount('mount-1')).resolves.toEqual({ deleted: true });
   });
 
-  it('throws on failed requests with server error body', async () => {
-    mockFetch({ error: 'Invalid config' }, false);
-    await expect(api.getConfig()).rejects.toThrow('Invalid config');
+  it('throws ApiError on failed requests with server error body', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 502,
+        statusText: 'Bad Gateway',
+        json: async () => ({ error: 'Invalid config' }),
+      }),
+    );
+    await expect(api.getConfig()).rejects.toMatchObject({
+      name: 'ApiError',
+      message: 'Invalid config',
+      status: 502,
+    });
   });
 
   it('falls back to status text when error JSON has no error field', async () => {
