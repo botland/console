@@ -6,23 +6,48 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { PageState } from '@/components/PageState';
 import { Button, Card, Input, Label, PageHeader } from '@/components/ui';
 import { api, ApiError } from '@/lib/api';
-import type { SystemConfig } from '@/lib/types';
+import type { GatewayInfo, SystemConfig } from '@/lib/types';
+
+type IdentityDraft = {
+  hostname: string;
+  ip: string;
+};
 
 export default function SystemPage() {
   const [system, setSystem] = useState<SystemConfig | null>(null);
   const [draft, setDraft] = useState<SystemConfig | null>(null);
+  const [identity, setIdentity] = useState<IdentityDraft | null>(null);
+  const [identityBaseline, setIdentityBaseline] = useState<IdentityDraft | null>(null);
+  const [localNodeId, setLocalNodeId] = useState<string | null>(null);
+  const [gateway, setGateway] = useState<GatewayInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [headIpWarning, setHeadIpWarning] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
     setError(null);
-    return api
-      .getSystem()
-      .then((s) => {
+    return Promise.all([api.getSystem(), api.status()])
+      .then(([s, status]) => {
+        const gw = status.gateway;
+        const nodeId = gw?.local_node_id ?? null;
+        const localNode =
+          status.config?.nodes.find((n) => n.id === nodeId) ??
+          (nodeId ? { hostname: '', ip: '' } : null);
+
         setSystem(s);
         setDraft(s);
+        setGateway(gw);
+        setLocalNodeId(nodeId);
+        if (localNode) {
+          const idDraft = { hostname: localNode.hostname, ip: localNode.ip };
+          setIdentity(idDraft);
+          setIdentityBaseline(idDraft);
+        } else {
+          setIdentity(null);
+          setIdentityBaseline(null);
+        }
         setLoading(false);
       })
       .catch((e) => {
@@ -36,16 +61,44 @@ export default function SystemPage() {
     load();
   }, [load]);
 
-  const save = async () => {
-    if (!draft) return;
-    const saved = await api.putSystem(draft);
-    setSystem(saved);
-    setDraft(saved);
-    setHeadIpWarning(false);
-  };
+  const identityChanged =
+    identity &&
+    identityBaseline &&
+    (identity.hostname !== identityBaseline.hostname || identity.ip !== identityBaseline.ip);
 
   const headIpChanged =
-    system && draft && draft.network.head_ip !== system.network.head_ip;
+    gateway?.is_head &&
+    system &&
+    draft &&
+    draft.network.head_ip !== system.network.head_ip;
+
+  const save = async () => {
+    if (!draft) return;
+    setSaveError(null);
+    try {
+      if (identityChanged && localNodeId && identity) {
+        await api.updateNode(localNodeId, {
+          hostname: identity.hostname,
+          ip: identity.ip,
+        });
+        setIdentityBaseline(identity);
+      }
+      const saved = await api.putSystem(draft);
+      setSystem(saved);
+      setDraft(saved);
+      setHeadIpWarning(false);
+    } catch (e) {
+      setSaveError(e instanceof ApiError ? e.message : 'Failed to save system settings');
+    }
+  };
+
+  const apply = () => {
+    if (headIpChanged) {
+      setHeadIpWarning(true);
+      return;
+    }
+    void save();
+  };
 
   return (
     <PageState loading={loading} error={error} onRetry={load}>
@@ -53,27 +106,65 @@ export default function SystemPage() {
         <>
           <PageHeader
             title="System"
-            description="Network, time, and security settings"
+            description="This appliance and cluster network settings"
           />
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-4xl">
+            {localNodeId && identity && (
+              <Card className="space-y-4 lg:col-span-2">
+                <h2 className="font-display font-semibold text-slate-100">This appliance</h2>
+                <p className="text-sm text-slate-400">
+                  Hostname and IP identify this machine in the cluster. Edit them here on each
+                  appliance — not from the head Nodes page.
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-3xl">
+                  <div>
+                    <Label>Node ID</Label>
+                    <Input value={localNodeId} readOnly className="text-slate-400" />
+                  </div>
+                  <div>
+                    <Label>Hostname</Label>
+                    <Input
+                      value={identity.hostname}
+                      onChange={(e) =>
+                        setIdentity({ ...identity, hostname: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <Label>IP address</Label>
+                    <Input
+                      value={identity.ip}
+                      onChange={(e) => setIdentity({ ...identity, ip: e.target.value })}
+                    />
+                  </div>
+                </div>
+              </Card>
+            )}
+
             <Card className="space-y-4">
               <h2 className="font-display font-semibold text-slate-100">Network</h2>
-              <div>
-                <Label>Head node IP</Label>
-                <Input
-                  value={draft.network.head_ip}
-                  onChange={(e) => {
-                    setDraft({
-                      ...draft,
-                      network: { ...draft.network, head_ip: e.target.value },
-                    });
-                    if (e.target.value !== system?.network.head_ip) {
-                      setHeadIpWarning(true);
+              {gateway?.is_head ? (
+                <div>
+                  <Label>Head node IP</Label>
+                  <p className="text-xs text-slate-500 mb-1">
+                    Workers use this address to reach the cluster coordinator.
+                  </p>
+                  <Input
+                    value={draft.network.head_ip}
+                    onChange={(e) =>
+                      setDraft({
+                        ...draft,
+                        network: { ...draft.network, head_ip: e.target.value },
+                      })
                     }
-                  }}
-                />
-              </div>
+                  />
+                </div>
+              ) : (
+                <p className="text-sm text-slate-400">
+                  Head node IP is configured on the coordinator appliance.
+                </p>
+              )}
               <div>
                 <Label>Gateway</Label>
                 <Input
@@ -128,12 +219,9 @@ export default function SystemPage() {
             </Card>
           </div>
 
-          <div className="mt-6">
-            <Button
-              onClick={() => (headIpChanged ? setHeadIpWarning(true) : save())}
-            >
-              Apply system settings
-            </Button>
+          <div className="mt-6 space-y-2">
+            {saveError && <p className="text-sm text-amber-400">{saveError}</p>}
+            <Button onClick={apply}>Apply system settings</Button>
           </div>
 
           <ConfirmDialog

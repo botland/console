@@ -11,6 +11,7 @@ import { api, ApiError } from '@/lib/api';
 import type { NodeWithAgent } from '@/lib/api';
 import type { NodeConfig } from '@/lib/types';
 
+
 export default function NodesPage() {
   const [nodes, setNodes] = useState<NodeWithAgent[]>([]);
   const [enabledDeployments, setEnabledDeployments] = useState(0);
@@ -20,6 +21,7 @@ export default function NodesPage() {
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState<Partial<NodeConfig>>({});
   const [headCandidate, setHeadCandidate] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -43,13 +45,16 @@ export default function NodesPage() {
 
   const formatLastSeen = (ts?: number) => {
     if (!ts) return 'unknown';
-    const sec = Math.max(0, Math.round((Date.now() - ts) / 1000));
+    // Controller reports Unix seconds; mock runtime uses milliseconds.
+    const seenMs = ts < 1e12 ? ts * 1000 : ts;
+    const sec = Math.max(0, Math.round((Date.now() - seenMs) / 1000));
     if (sec < 60) return `${sec}s ago`;
     return `${Math.round(sec / 60)}m ago`;
   };
 
   const startEdit = (node: NodeWithAgent) => {
     setEditing(node.id);
+    setSaveError(null);
     setDraft({
       gpus_reserved_for_system: node.gpus_reserved_for_system,
       labels: [...node.labels],
@@ -57,9 +62,14 @@ export default function NodesPage() {
   };
 
   const save = async (id: string) => {
-    await api.updateNode(id, draft);
-    setEditing(null);
-    load();
+    try {
+      await api.updateNode(id, draft);
+      setEditing(null);
+      setSaveError(null);
+      load();
+    } catch (e) {
+      setSaveError(e instanceof ApiError ? e.message : 'Failed to save node');
+    }
   };
 
   const confirmSetHead = async () => {
@@ -102,7 +112,9 @@ export default function NodesPage() {
                     </span>
                   )}
                 </div>
-                <div className="mt-1 text-sm text-slate-400">{node.ip}</div>
+                <div className="mt-1 text-sm text-slate-400">
+                  {node.id} · {node.ip}
+                </div>
                 <div className="mt-1 text-xs text-slate-500">
                   {node.gpus.length} GPU(s)
                   {node.labels.length > 0 && ` · ${node.labels.join(', ')}`}
@@ -151,6 +163,9 @@ export default function NodesPage() {
 
                 {editing === node.id ? (
                   <div className="mt-4 grid grid-cols-2 gap-4 max-w-lg">
+                    <p className="col-span-2 text-xs text-slate-500">
+                      Hostname and IP are edited on each appliance under System.
+                    </p>
                     <div>
                       <Label>GPUs reserved for system</Label>
                       <Input
@@ -181,9 +196,18 @@ export default function NodesPage() {
                         }
                       />
                     </div>
+                    {saveError && (
+                      <div className="col-span-2 text-sm text-amber-400">{saveError}</div>
+                    )}
                     <div className="col-span-2 flex gap-2">
                       <Button onClick={() => save(node.id)}>Save</Button>
-                      <Button variant="ghost" onClick={() => setEditing(null)}>
+                      <Button
+                        variant="ghost"
+                        onClick={() => {
+                          setEditing(null);
+                          setSaveError(null);
+                        }}
+                      >
                         Cancel
                       </Button>
                     </div>

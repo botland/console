@@ -1,6 +1,7 @@
 import { getConfig, getLocalNodeId, isHeadCoordinator } from './index';
 
 export const COORDINATOR_HEADER = 'x-appliance-coordinator';
+export const LOCAL_NODE_HEADER = 'x-appliance-local-node';
 
 export async function getHeadApiBase(): Promise<string> {
   if (process.env.APPLIANCE_HEAD_INTERNAL_URL) {
@@ -38,6 +39,7 @@ export async function proxyToHead(req: Request): Promise<Response> {
   const target = `${headBase}${incoming.pathname}${incoming.search}`;
   const headers = new Headers(req.headers);
   headers.set(COORDINATOR_HEADER, 'true');
+  headers.set(LOCAL_NODE_HEADER, await getLocalNodeId());
 
   const init: RequestInit = {
     method: req.method,
