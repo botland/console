@@ -17,10 +17,16 @@ import {
   resolveComputeBackend,
   toOrchestrationPutPayload,
 } from '@/lib/orchestration';
+import {
+  buildConsoleContext,
+  canDetachFromCluster,
+  canEditOrchestrationTopology,
+} from '@/lib/console-capabilities';
 import type {
   ApplianceConfig,
   ComputeBackend,
   FederationLayout,
+  GatewayInfo,
   OrchestrationConfig,
   ServingMode,
 } from '@/lib/types';
@@ -40,16 +46,23 @@ export default function OrchestrationPage() {
   const [pendingHead, setPendingHead] = useState<string | null>(null);
   const [migratePreview, setMigratePreview] = useState<string | null>(null);
   const [switching, setSwitching] = useState<{ title: string; detail?: string } | null>(null);
+  const [gateway, setGateway] = useState<GatewayInfo | null>(null);
+  const [detachOpen, setDetachOpen] = useState(false);
 
   const enabledDeployments = config?.deployments.filter((d) => d.enabled).length ?? 0;
+  const ctx =
+    gateway && cluster ? buildConsoleContext(gateway, cluster) : null;
+  const workerDetach = ctx ? canDetachFromCluster(ctx) : false;
+  const showTopology = ctx ? canEditOrchestrationTopology(ctx) : true;
 
   const reload = useCallback(() => {
     setLoading(true);
     setError(null);
-    return Promise.all([api.getOrchestration(), api.getConfig()])
-      .then(([cl, cfg]) => {
+    return Promise.all([api.getOrchestration(), api.getConfig(), api.status()])
+      .then(([cl, cfg, status]) => {
         setCluster(cl);
         setConfig(cfg);
+        setGateway(status.gateway ?? null);
         setLoading(false);
       })
       .catch((e) => {
@@ -214,6 +227,44 @@ export default function OrchestrationPage() {
         })()
       : null;
 
+  const confirmDetach = async () => {
+    setDetachOpen(false);
+    setSwitching({
+      title: 'Detaching from cluster…',
+      detail: 'Leaving the cluster and restarting as a standalone appliance.',
+    });
+    setError(null);
+    try {
+      const baseline = await api.status();
+      const baselineEventIds = baseline.events.map((evt) => evt.id);
+      const putResult = await api.detachFromCluster();
+      const result = await waitForOrchestrationSettle(
+        () =>
+          api.status().then((status) => ({
+            state: status.state,
+            last_reconcile_ts: status.last_reconcile_ts,
+            events: status.events,
+          })),
+        {
+          baselineReconcileTs: baseline.last_reconcile_ts,
+          baselineEventIds,
+          reconcileSeq: putResult.reconcile_seq,
+        },
+      );
+      await reload();
+      if (!result.settled) {
+        setError(
+          `Detach is still in progress (state: ${result.state}). Check Overview for status.`,
+        );
+      }
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Failed to detach from cluster');
+      console.error(e);
+    } finally {
+      setSwitching(null);
+    }
+  };
+
   const controlsDisabled = !!switching;
 
   return (
@@ -225,8 +276,37 @@ export default function OrchestrationPage() {
         <>
           <PageHeader
             title="Orchestration"
-            description="Topology, inference backend, and coordinator head"
+            description={
+              workerDetach
+                ? 'Leave the distributed cluster and run this appliance standalone'
+                : cluster.serving_mode === 'standalone'
+                  ? 'Runtime settings for this standalone appliance'
+                  : 'Topology, inference backend, and coordinator head'
+            }
           />
+
+          {workerDetach && (
+            <Card className="max-w-2xl space-y-4 mb-6">
+              <h2 className="font-display font-semibold text-slate-100">Detach and run standalone</h2>
+              <ul className="list-disc pl-5 text-sm text-slate-400 space-y-1">
+                <li>Inference on this appliance will restart.</li>
+                <li>This node will leave the cluster registry on the coordinator.</li>
+                <li>
+                  The coordinator cannot migrate head role to this node afterward unless you re-join
+                  from the Nodes page.
+                </li>
+                <li>Manage the remaining cluster from the coordinator console (Nodes → Open console).</li>
+              </ul>
+              <button
+                type="button"
+                disabled={controlsDisabled}
+                onClick={() => setDetachOpen(true)}
+                className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2.5 text-sm font-medium text-amber-200 hover:bg-amber-500/20 disabled:opacity-50"
+              >
+                Detach from cluster
+              </button>
+            </Card>
+          )}
 
           {migratePreview && (
             <Card className="mb-6 border-cyan-500/30 bg-cyan-500/5 text-sm text-cyan-200">
@@ -234,6 +314,7 @@ export default function OrchestrationPage() {
             </Card>
           )}
 
+          {showTopology && (
           <Card className={`max-w-2xl space-y-6 ${controlsDisabled ? 'pointer-events-none opacity-50' : ''}`}>
             <div>
               <Label>Serving topology</Label>
@@ -408,6 +489,17 @@ export default function OrchestrationPage() {
               </label>
             </div>
           </Card>
+          )}
+
+          <ConfirmDialog
+            open={detachOpen}
+            title="Detach from cluster?"
+            message="This appliance will leave the cluster and run standalone. The coordinator cannot migrate head to this node afterward unless you join again."
+            confirmLabel="Detach"
+            danger
+            onConfirm={confirmDetach}
+            onCancel={() => setDetachOpen(false)}
+          />
 
           <ConfirmDialog
             open={!!pendingSwitch && !!pendingCopy}

@@ -8,7 +8,12 @@ import { PageError, PageLoading } from '@/components/PageState';
 import { DeploymentBadge } from '@/components/StatusBadge';
 import { Button, Card, PageHeader } from '@/components/ui';
 import { api, ApiError } from '@/lib/api';
-import type { DeploymentConfig, NodeConfig, OrchestrationConfig } from '@/lib/types';
+import {
+  buildConsoleContext,
+  canManageClusterDeployments,
+  isDistributedWorker,
+} from '@/lib/console-capabilities';
+import type { DeploymentConfig, GatewayInfo, NodeConfig, OrchestrationConfig } from '@/lib/types';
 
 export default function DeploymentsPage() {
   const [deployments, setDeployments] = useState<DeploymentConfig[]>([]);
@@ -17,15 +22,22 @@ export default function DeploymentsPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<DeploymentConfig | null | 'new'>(null);
+  const [gateway, setGateway] = useState<GatewayInfo | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
     setError(null);
-    return Promise.all([api.listDeployments(), api.getOrchestration(), api.getConfig()])
-      .then(([deps, cl, config]) => {
+    return Promise.all([
+      api.listDeployments(),
+      api.getOrchestration(),
+      api.getConfig(),
+      api.status(),
+    ])
+      .then(([deps, cl, config, status]) => {
         setDeployments(deps);
         setCluster(cl);
         setNodes(config.nodes);
+        setGateway(status.gateway ?? null);
         setLoading(false);
       })
       .catch((e) => {
@@ -58,6 +70,11 @@ export default function DeploymentsPage() {
     load();
   };
 
+  const ctx =
+    gateway && cluster ? buildConsoleContext(gateway, cluster) : null;
+  const canManage = ctx ? canManageClusterDeployments(ctx) : true;
+  const localWorkloads = ctx ? isDistributedWorker(ctx) : false;
+
   if (loading && deployments.length === 0 && !error) {
     return <PageLoading />;
   }
@@ -66,11 +83,17 @@ export default function DeploymentsPage() {
     <>
       <PageHeader
         title="Deployments"
-        description="Models served on your appliance"
+        description={
+          localWorkloads
+            ? 'Workloads assigned to this appliance in the cluster'
+            : 'Models served on this appliance'
+        }
         action={
-          <Button onClick={() => setEditing('new')} disabled={!cluster}>
-            <Plus className="w-4 h-4" /> Add model
-          </Button>
+          canManage ? (
+            <Button onClick={() => setEditing('new')} disabled={!cluster}>
+              <Plus className="w-4 h-4" /> Add model
+            </Button>
+          ) : undefined
         }
       />
 
@@ -125,14 +148,16 @@ export default function DeploymentsPage() {
                 )}
               </div>
             </div>
-            <div className="flex gap-2">
-              <Button variant="secondary" onClick={() => setEditing(dep)}>
-                <Pencil className="w-4 h-4" />
-              </Button>
-              <Button variant="danger" onClick={() => handleDelete(dep.id)}>
-                <Trash2 className="w-4 h-4" />
-              </Button>
-            </div>
+            {canManage && (
+              <div className="flex gap-2">
+                <Button variant="secondary" onClick={() => setEditing(dep)}>
+                  <Pencil className="w-4 h-4" />
+                </Button>
+                <Button variant="danger" onClick={() => handleDelete(dep.id)}>
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              </div>
+            )}
           </Card>
         ))}
         {!error && deployments.length === 0 && (

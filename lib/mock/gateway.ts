@@ -3,6 +3,5 @@ export {
   getGatewayInfo,
   getHeadApiBase,
   isCoordinatorRequest,
-  proxyToHead,
   runWithHeadAuthority,
 } from '@/lib/runtime/gateway';

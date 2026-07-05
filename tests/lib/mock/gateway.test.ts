@@ -7,7 +7,6 @@ import {
   getGatewayInfo,
   getHeadApiBase,
   isCoordinatorRequest,
-  proxyToHead,
   runWithHeadAuthority,
 } from '@/lib/mock/gateway';
 import { getConfig, resetTestState } from '@/lib/mock/store';
@@ -47,87 +46,13 @@ describe('gateway', () => {
     expect(info.local_node_id).toBe('node-2');
   });
 
-  it('runs handler locally on head coordinator', async () => {
-    const handler = vi.fn(async () => new Response('ok'));
-    const res = await runWithHeadAuthority(new Request('http://localhost/api/status'), handler);
-    expect(handler).toHaveBeenCalled();
-    expect(await res.text()).toBe('ok');
-  });
-
-  it('delegates to handler on worker when internal proxy is enabled', async () => {
+  it('always runs handler locally (no head console proxy)', async () => {
     process.env.APPLIANCE_LOCAL_NODE_ID = 'node-2';
     resetTestState({ seed: true, clearDisk: true });
-    const handler = vi.fn(async () => new Response('proxied'));
-    const res = await runWithHeadAuthority(new Request('http://localhost/api/nodes'), handler);
-    expect(handler).toHaveBeenCalled();
-    expect(await res.text()).toBe('proxied');
-  });
-
-  it('proxies to head over fetch when internal mode is disabled', async () => {
-    delete process.env.APPLIANCE_GATEWAY_INTERNAL;
-    process.env.APPLIANCE_LOCAL_NODE_ID = 'node-2';
-    resetTestState({ seed: true, clearDisk: true });
-
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 })),
-    );
-
-    const res = await proxyToHead(new Request('http://localhost:3000/api/nodes'));
-    const headBase = await getHeadApiBase();
-    expect(fetch).toHaveBeenCalledWith(
-      expect.stringContaining(`${headBase}/api/nodes`),
-      expect.objectContaining({ method: 'GET' }),
-    );
-    expect((await res.json()).ok).toBe(true);
-  });
-
-  it('forwards mutation bodies when proxying to head', async () => {
-    delete process.env.APPLIANCE_GATEWAY_INTERNAL;
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue(new Response('{}', { status: 200 })),
-    );
-
-    await proxyToHead(
-      new Request('http://localhost:3000/api/config', {
-        method: 'PUT',
-        body: JSON.stringify({ version: 2 }),
-      }),
-    );
-
-    expect(fetch).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({ method: 'PUT', body: expect.any(ReadableStream) }),
-    );
-  });
-
-  it('rethrows unexpected proxy failures', async () => {
-    delete process.env.APPLIANCE_GATEWAY_INTERNAL;
-    process.env.APPLIANCE_LOCAL_NODE_ID = 'node-2';
-    resetTestState({ seed: true, clearDisk: true });
-
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network down')));
-
-    await expect(
-      runWithHeadAuthority(new Request('http://localhost/api/nodes'), async () => new Response('x')),
-    ).rejects.toThrow('network down');
-  });
-
-  it('proxies worker requests via fetch when internal mode is off', async () => {
-    delete process.env.APPLIANCE_GATEWAY_INTERNAL;
-    process.env.APPLIANCE_LOCAL_NODE_ID = 'node-2';
-    resetTestState({ seed: true, clearDisk: true });
-
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue(new Response('remote', { status: 200 })),
-    );
-
     const handler = vi.fn(async () => new Response('local'));
     const res = await runWithHeadAuthority(new Request('http://localhost/api/nodes'), handler);
-    expect(handler).not.toHaveBeenCalled();
-    expect(await res.text()).toBe('remote');
+    expect(handler).toHaveBeenCalled();
+    expect(await res.text()).toBe('local');
   });
 
   it('uses custom head internal url', async () => {

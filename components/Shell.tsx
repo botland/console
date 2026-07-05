@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import {
   Box,
   HardDrive,
@@ -12,22 +13,56 @@ import {
   Sliders,
 } from 'lucide-react';
 
+import { ApplianceIdentityBar } from '@/components/ApplianceIdentityBar';
 import { Logo } from '@/components/Logo';
-import { WorkerBanner } from '@/components/WorkerBanner';
+import { api } from '@/lib/api';
 import { cn } from '@/lib/cn';
+import {
+  buildConsoleContext,
+  NAV_ROUTES,
+  visibleNavItems,
+  type ConsoleNavId,
+} from '@/lib/console-capabilities';
 
-const nav = [
-  { href: '/', label: 'Overview', icon: LayoutDashboard },
-  { href: '/deployments', label: 'Deployments', icon: Box },
-  { href: '/orchestration', label: 'Orchestration', icon: Network },
-  { href: '/nodes', label: 'Nodes', icon: Server },
-  { href: '/storage', label: 'Storage', icon: HardDrive },
-  { href: '/system', label: 'System', icon: Settings },
-  { href: '/config', label: 'Config', icon: Sliders },
-];
+const NAV_META: Record<
+  ConsoleNavId,
+  { label: string; icon: typeof LayoutDashboard }
+> = {
+  overview: { label: 'Overview', icon: LayoutDashboard },
+  deployments: { label: 'Deployments', icon: Box },
+  orchestration: { label: 'Orchestration', icon: Network },
+  nodes: { label: 'Nodes', icon: Server },
+  storage: { label: 'Storage', icon: HardDrive },
+  system: { label: 'System', icon: Settings },
+  config: { label: 'Config', icon: Sliders },
+};
 
 export function Shell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const [navIds, setNavIds] = useState<ConsoleNavId[]>([
+    'overview',
+    'deployments',
+    'orchestration',
+    'nodes',
+    'storage',
+    'system',
+    'config',
+  ]);
+  const [footer, setFooter] = useState<string | null>(null);
+
+  useEffect(() => {
+    api
+      .status()
+      .then((status) => {
+        if (status.config?.appliance_id) {
+          setFooter(status.config.appliance_id);
+        }
+        if (status.gateway && status.config?.cluster) {
+          setNavIds(visibleNavItems(buildConsoleContext(status.gateway, status.config.cluster)));
+        }
+      })
+      .catch(() => setFooter(null));
+  }, []);
 
   return (
     <div className="min-h-screen flex">
@@ -36,11 +71,13 @@ export function Shell({ children }: { children: React.ReactNode }) {
           <Logo />
         </div>
         <nav className="flex-1 p-4 space-y-1">
-          {nav.map(({ href, label, icon: Icon }) => {
+          {navIds.map((id) => {
+            const { href } = { href: NAV_ROUTES[id] };
+            const { label, icon: Icon } = NAV_META[id];
             const active = href === '/' ? pathname === '/' : pathname.startsWith(href);
             return (
               <Link
-                key={href}
+                key={id}
                 href={href}
                 className={cn(
                   'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors',
@@ -55,13 +92,13 @@ export function Shell({ children }: { children: React.ReactNode }) {
             );
           })}
         </nav>
-        <div className="p-4 border-t border-slate-800 text-xs text-slate-500">
-          Mock console · demo cluster
-        </div>
+        {footer && (
+          <div className="p-4 border-t border-slate-800 text-xs text-slate-500">{footer}</div>
+        )}
       </aside>
       <main className="flex-1 overflow-auto">
         <div className="max-w-7xl mx-auto px-8 py-8">
-          <WorkerBanner />
+          <ApplianceIdentityBar />
           {children}
         </div>
       </main>

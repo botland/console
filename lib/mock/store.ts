@@ -279,6 +279,66 @@ export function migrateHead(newHeadNodeId: string): MigrateHeadResult {
   };
 }
 
+export function detachFromCluster(): import('@/lib/types').OrchestrationPutResponse {
+  const state = getState();
+  const localId = state.local_node_id;
+  const cluster = state.config.cluster;
+  if (cluster.head_node_id === localId) {
+    throw new Error('Coordinator cannot detach from its own cluster');
+  }
+  if (cluster.serving_mode !== 'distributed') {
+    throw new Error('Detach is only available while in distributed mode');
+  }
+  const localNode = state.config.nodes.find((n) => n.id === localId);
+  const localIp = localNode?.ip ?? state.config.system.network.head_ip;
+  cluster.serving_mode = 'standalone';
+  cluster.compute_backend = 'federation';
+  cluster.head_gpu = true;
+  cluster.head_node_id = localId;
+  cluster.head_epoch += 1;
+  state.config.system.network.head_ip = localIp;
+  syncHeadFlags(state.config);
+  state.status.head = headPayload(state.config);
+  addEvent(`Node ${localId} detached from cluster — now standalone`, 'warn');
+  saveState(state);
+  startReconcile('Detached from cluster — restarting standalone inference');
+  return { ...cluster, federation_auto_placement: true, reconcile_seq: null };
+}
+
+export function joinCluster(
+  coordinatorAddress: string,
+): import('@/lib/types').OrchestrationPutResponse & { coordinator_console_url?: string } {
+  const state = getState();
+  const localId = state.local_node_id;
+  const cluster = state.config.cluster;
+  if (cluster.serving_mode !== 'standalone') {
+    throw new Error('Join is only available in standalone mode');
+  }
+  const host = coordinatorAddress.replace(/^https?:\/\//, '').split(':')[0].trim();
+  const coordinator = state.config.nodes.find((n) => n.ip === host || n.id === host);
+  const headNode = coordinator ?? state.config.nodes.find((n) => n.is_head);
+  if (!headNode || headNode.id === localId) {
+    throw new Error('Coordinator not found — open its console first or check the address');
+  }
+  cluster.serving_mode = 'distributed';
+  cluster.compute_backend = cluster.compute_backend ?? 'federation';
+  cluster.head_node_id = headNode.id;
+  cluster.head_epoch = Math.max(cluster.head_epoch, headNode.is_head ? cluster.head_epoch : 1);
+  state.config.system.network.head_ip = headNode.ip;
+  syncHeadFlags(state.config);
+  state.status.head = headPayload(state.config);
+  repointAgentsToHead(state, headNode.id);
+  addEvent(`Joined cluster at coordinator ${headNode.hostname} (${headNode.ip})`, 'warn');
+  saveState(state);
+  startReconcile('Joined cluster — rescheduling workloads');
+  return {
+    ...cluster,
+    federation_auto_placement: true,
+    reconcile_seq: null,
+    coordinator_console_url: `http://${headNode.ip}`,
+  };
+}
+
 export function updateNode(nodeId: string, partial: Partial<NodeConfig>): NodeConfig | null {
   const state = getState();
   const idx = state.config.nodes.findIndex((n) => n.id === nodeId);

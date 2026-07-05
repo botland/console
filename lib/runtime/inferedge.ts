@@ -126,6 +126,20 @@ export async function updateCluster(partial: ClusterConfig): Promise<ClusterConf
   return updateOrchestration(partial);
 }
 
+export async function detachFromCluster(): Promise<import('@/lib/types').OrchestrationPutResponse> {
+  return controllerJson<import('@/lib/types').OrchestrationPutResponse>('/orchestration/detach', {
+    method: 'POST',
+  });
+}
+
+export async function joinCluster(coordinatorAddress: string): Promise<import('@/lib/types').OrchestrationPutResponse & { coordinator_console_url?: string }> {
+  return controllerJson('/orchestration/join', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ coordinator_address: coordinatorAddress }),
+  });
+}
+
 export async function migrateHead(newHeadNodeId: string): Promise<MigrateHeadResult> {
   try {
     return await controllerJson<MigrateHeadResult>('/orchestration/migrate-head', {

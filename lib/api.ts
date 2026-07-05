@@ -122,6 +122,21 @@ export const api = {
       body: JSON.stringify({ head_node_id }),
     }),
 
+  detachFromCluster: () =>
+    fetchJson<import('@/lib/types').OrchestrationPutResponse>('/api/orchestration/detach', {
+      method: 'POST',
+    }),
+
+  joinCluster: (coordinator_address: string) =>
+    fetchJson<import('@/lib/types').OrchestrationPutResponse & { coordinator_console_url?: string }>(
+      '/api/orchestration/join',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ coordinator_address }),
+      },
+    ),
+
   listNodes: () => fetchJson<NodeWithAgent[]>('/api/nodes'),
 
   updateNode: (id: string, node: Partial<NodeConfig>) =>

@@ -82,6 +82,18 @@ export async function migrateHead(newHeadNodeId: string): Promise<MigrateHeadRes
   return isInferedgeRuntime() ? inferedge.migrateHead(newHeadNodeId) : mock.migrateHead(newHeadNodeId);
 }
 
+export async function detachFromCluster(): Promise<OrchestrationPutResponse> {
+  return isInferedgeRuntime() ? inferedge.detachFromCluster() : mock.detachFromCluster();
+}
+
+export async function joinCluster(
+  coordinatorAddress: string,
+): Promise<OrchestrationPutResponse & { coordinator_console_url?: string }> {
+  return isInferedgeRuntime()
+    ? inferedge.joinCluster(coordinatorAddress)
+    : mock.joinCluster(coordinatorAddress);
+}
+
 export async function listNodesWithAgents(): Promise<Array<NodeConfig & { agent?: NodeAgentState }>> {
   return isInferedgeRuntime() ? inferedge.listNodesWithAgents() : mock.listNodesWithAgents();
 }

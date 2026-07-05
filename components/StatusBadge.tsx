@@ -1,5 +1,5 @@
 import { cn } from '@/lib/cn';
-import type { ApplianceState, DeploymentStatus, NodeStatus } from '@/lib/types';
+import type { AgentPhase, ApplianceState, DeploymentStatus, NodeStatus } from '@/lib/types';
 
 const applianceColors: Record<ApplianceState, string> = {
   READY: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
@@ -51,4 +51,14 @@ export function DeploymentBadge({ status }: { status: DeploymentStatus }) {
 
 export function NodeBadge({ status }: { status: NodeStatus }) {
   return <Badge label={status} colorClass={nodeColors[status]} />;
+}
+
+const agentColors: Record<AgentPhase, string> = {
+  running: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
+  idle: 'bg-slate-500/15 text-slate-400 border-slate-600/30',
+  degraded: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
+};
+
+export function AgentPhaseBadge({ phase }: { phase: AgentPhase }) {
+  return <Badge label={`agent ${phase}`} colorClass={agentColors[phase]} />;
 }
