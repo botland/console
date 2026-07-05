@@ -20,6 +20,7 @@ export default function SystemPage() {
   const [identityBaseline, setIdentityBaseline] = useState<IdentityDraft | null>(null);
   const [localNodeId, setLocalNodeId] = useState<string | null>(null);
   const [gateway, setGateway] = useState<GatewayInfo | null>(null);
+  const [coordinatorIp, setCoordinatorIp] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -38,7 +39,8 @@ export default function SystemPage() {
 
         setSystem(s);
         setDraft(s);
-        setGateway(gw);
+        setGateway(gw ?? null);
+        setCoordinatorIp(status.head?.head_ip ?? s.network.head_ip ?? '');
         setLocalNodeId(nodeId);
         if (localNode) {
           const idDraft = { hostname: localNode.hostname, ip: localNode.ip };
@@ -106,7 +108,11 @@ export default function SystemPage() {
         <>
           <PageHeader
             title="System"
-            description="This appliance and cluster network settings"
+            description={
+              gateway?.is_head
+                ? 'This coordinator appliance and cluster network settings'
+                : 'This worker appliance — local identity below; coordinator IP is read-only'
+            }
           />
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-4xl">
@@ -132,7 +138,7 @@ export default function SystemPage() {
                     />
                   </div>
                   <div>
-                    <Label>IP address</Label>
+                    <Label>IP address (this machine)</Label>
                     <Input
                       value={identity.ip}
                       onChange={(e) => setIdentity({ ...identity, ip: e.target.value })}
@@ -146,7 +152,7 @@ export default function SystemPage() {
               <h2 className="font-display font-semibold text-slate-100">Network</h2>
               {gateway?.is_head ? (
                 <div>
-                  <Label>Head node IP</Label>
+                  <Label>Coordinator IP (this appliance)</Label>
                   <p className="text-xs text-slate-500 mb-1">
                     Workers use this address to reach the cluster coordinator.
                   </p>
@@ -161,9 +167,14 @@ export default function SystemPage() {
                   />
                 </div>
               ) : (
-                <p className="text-sm text-slate-400">
-                  Head node IP is configured on the coordinator appliance.
-                </p>
+                <div>
+                  <Label>Coordinator IP</Label>
+                  <p className="text-xs text-slate-500 mb-1">
+                    Remote head for this worker — not this machine&apos;s IP. Edit under
+                    System on the coordinator, or set HEAD_IP in .env before first boot.
+                  </p>
+                  <Input value={coordinatorIp} readOnly className="text-slate-400" />
+                </div>
               )}
               <div>
                 <Label>Gateway</Label>

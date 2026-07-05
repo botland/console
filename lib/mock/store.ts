@@ -147,13 +147,18 @@ export function setConfig(config: unknown): ApplianceConfig {
   return parsed;
 }
 
-export function addEvent(message: string, level: ReconcileEvent['level'] = 'info'): void {
+export function addEvent(
+  message: string,
+  level: ReconcileEvent['level'] = 'info',
+  extra?: Pick<ReconcileEvent, 'event' | 'reconcile_seq'>,
+): void {
   const state = getState();
   state.status.events.unshift({
     id: `evt-${Date.now()}`,
     timestamp: new Date().toISOString(),
     message,
     level,
+    ...extra,
   });
   state.status.events = state.status.events.slice(0, 50);
   state.status.last_reconcile_ts = Date.now() / 1000;
@@ -177,7 +182,7 @@ export function startReconcile(message: string): void {
     for (const dep of s.config.deployments) {
       if (dep.enabled) dep.status = 'healthy';
     }
-    addEvent('Reconciliation complete — all enabled deployments healthy', 'info');
+    addEvent('Model serving ready', 'info', { event: 'reconcile_ready' });
     broadcast('cluster.state', { state: 'READY', last_error: null });
     saveState(s);
   }, duration);

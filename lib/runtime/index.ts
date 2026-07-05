@@ -8,6 +8,7 @@ import type {
   MigrateHeadResult,
   NodeAgentState,
   NodeConfig,
+  OrchestrationPutResponse,
   StorageMount,
 } from '@/lib/types';
 
@@ -41,6 +42,18 @@ export async function getCluster(): Promise<ClusterConfig> {
 
 export async function setConfig(config: unknown): Promise<ApplianceConfig> {
   return isInferedgeRuntime() ? inferedge.setConfig(config) : mock.setConfig(config);
+}
+
+export async function putOrchestration(cluster: ClusterConfig): Promise<OrchestrationPutResponse> {
+  if (isInferedgeRuntime()) {
+    return inferedge.updateOrchestration(cluster);
+  }
+  const config = mock.updateCluster(cluster);
+  return {
+    ...config.cluster,
+    federation_auto_placement: true,
+    reconcile_seq: null,
+  };
 }
 
 export async function updateOrchestration(partial: Partial<ClusterConfig>): Promise<ApplianceConfig> {

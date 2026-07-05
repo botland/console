@@ -85,6 +85,10 @@ export type OrchestrationConfig = ClusterConfig & {
   federation_auto_placement?: boolean;
 };
 
+export type OrchestrationPutResponse = OrchestrationConfig & {
+  reconcile_seq?: number | null;
+};
+
 export interface SystemConfig {
   network: {
     head_ip: string;
@@ -125,6 +129,8 @@ export interface ReconcileEvent {
   timestamp: string;
   message: string;
   level: 'info' | 'warn' | 'error';
+  event?: string;
+  reconcile_seq?: number;
 }
 
 export interface HeadChangedPayload {

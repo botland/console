@@ -29,6 +29,8 @@ interface InferedgeStatusResponse {
     timestamp: string;
     message: string;
     level: 'info' | 'warn' | 'error';
+    event?: string;
+    reconcile_seq?: number;
   }>;
   actual?: {
     health?: string;
@@ -109,8 +111,10 @@ export async function getCluster(): Promise<ClusterConfig> {
   return getOrchestration();
 }
 
-export async function updateOrchestration(partial: ClusterConfig): Promise<ClusterConfig> {
-  return controllerJson<ClusterConfig>('/orchestration', {
+export async function updateOrchestration(
+  partial: ClusterConfig,
+): Promise<import('@/lib/types').OrchestrationPutResponse> {
+  return controllerJson<import('@/lib/types').OrchestrationPutResponse>('/orchestration', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(partial),
@@ -206,12 +210,13 @@ export async function getGatewayStatus(): Promise<GatewayInfo> {
     return { ...raw.gateway, head_api_url: headApiUrl };
   }
 
-  const port = process.env.APPLIANCE_PORT ?? '3000';
+  const port = process.env.APPLIANCE_CONSOLE_PORT ?? process.env.APPLIANCE_PORT ?? '80';
   const headIp = raw.head?.head_ip ?? '127.0.0.1';
-  const localNodeId = process.env.APPLIANCE_LOCAL_NODE_ID ?? raw.head?.head_node_id ?? '';
+  const localNodeId = process.env.APPLIANCE_LOCAL_NODE_ID ?? '';
+  const isHead = localNodeId !== '' && localNodeId === raw.head?.head_node_id;
   return {
     local_node_id: localNodeId,
-    is_head: localNodeId !== '' && localNodeId === raw.head?.head_node_id,
+    is_head: isHead,
     head_api_url: `http://${headIp}:${port}/api`,
   };
 }

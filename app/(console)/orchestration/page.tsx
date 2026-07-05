@@ -70,9 +70,21 @@ export default function OrchestrationPage() {
     setSwitching(overlay);
     setError(null);
     try {
-      await api.putOrchestration(toOrchestrationPutPayload(next));
-      const result = await waitForOrchestrationSettle(() =>
-        api.status().then((status) => ({ state: status.state })),
+      const baseline = await api.status();
+      const baselineEventIds = baseline.events.map((evt) => evt.id);
+      const putResult = await api.putOrchestration(toOrchestrationPutPayload(next));
+      const result = await waitForOrchestrationSettle(
+        () =>
+          api.status().then((status) => ({
+            state: status.state,
+            last_reconcile_ts: status.last_reconcile_ts,
+            events: status.events,
+          })),
+        {
+          baselineReconcileTs: baseline.last_reconcile_ts,
+          baselineEventIds,
+          reconcileSeq: putResult.reconcile_seq,
+        },
       );
       await reload();
       if (!result.settled) {

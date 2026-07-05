@@ -98,7 +98,7 @@ export const api = {
   getOrchestration: () => fetchJson<ClusterConfig>('/api/orchestration'),
 
   putOrchestration: (cluster: ClusterConfig) =>
-    fetchJson<ClusterConfig>('/api/orchestration', {
+    fetchJson<import('@/lib/types').OrchestrationPutResponse>('/api/orchestration', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(cluster),
