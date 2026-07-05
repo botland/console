@@ -473,21 +473,11 @@ export function DeploymentForm({
               onChange={(e) => updateParallelism({ context_length: +e.target.value })}
             />
           </div>
-          <div>
-            <Label>Quantization</Label>
-            <Select
-              value={dep.parallelism.quantization ?? ''}
-              onChange={(e) =>
-                updateParallelism({
-                  quantization: e.target.value || null,
-                })
-              }
-            >
-              <option value="">None</option>
-              <option value="awq">AWQ</option>
-              <option value="gptq">GPTQ</option>
-              <option value="fp8">FP8</option>
-            </Select>
+          <div className="md:col-span-2">
+            <p className="text-sm text-slate-500">
+              Quantization is determined by the HuggingFace repo. Use a pre-quantized model
+              (for example AWQ or GPTQ in the repo name) that fits your GPU VRAM.
+            </p>
           </div>
           <div className="flex items-end">
             <label className="flex items-center gap-2 text-sm text-slate-400">

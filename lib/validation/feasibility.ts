@@ -29,10 +29,11 @@ function minVramOnNode(config: ApplianceConfig, gpusNeeded: number): number {
 }
 
 function isQuantizedModel(deployment: DeploymentConfig): boolean {
-  if (deployment.parallelism.quantization) return true;
   if (deployment.source.type !== 'huggingface') return false;
   const repo = deployment.source.repo_id.toLowerCase();
-  return ['awq', 'gptq', 'fp8', 'marlin', 'quant'].some((tag) => repo.includes(tag));
+  return ['awq', 'gptq', 'fp8', 'marlin', 'quant', 'gguf', 'bnb'].some((tag) =>
+    repo.includes(tag),
+  );
 }
 
 export function validateDeployment(
