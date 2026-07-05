@@ -48,7 +48,9 @@ Export `conf.json` includes `head_node_id`, `head_ip`, and `head_epoch` for USB 
 |----------|-------------|
 | `GET /api/status` | State + config |
 | `POST /api/deployments/validate` | Hardware feasibility check |
-| `POST /api/cluster/migrate-head` | Head migration |
+| `GET/PUT /api/orchestration` | Topology and backend settings |
+| `POST /api/orchestration/migrate-head` | Head migration |
+| `GET/PUT /api/cluster` | Deprecated alias of orchestration |
 | `GET /api/v1/ws` | SSE: `cluster.state`, `node.metrics`, `head.changed`, `events` |
 | `GET /api/config/export` | `conf.json` download |
 
@@ -57,8 +59,8 @@ Export `conf.json` includes `head_node_id`, `head_ip`, and `head_epoch` for USB 
 Simulated agents on every node push GPU telemetry to the head coordinator every 5s. Worker gateways proxy API calls to the head unless they are the coordinator.
 
 ```bash
-# Run as worker node (proxies to head at head_ip:3000)
-APPLIANCE_LOCAL_NODE_ID=node-2 npm run dev
+# Run as worker node (proxies to coordinator console via HEAD_CONSOLE_URL)
+APPLIANCE_LOCAL_NODE_ID=node-1 HEAD_CONSOLE_URL=http://10.0.0.2/api npm run dev
 
 # Optional overrides
 APPLIANCE_HEAD_INTERNAL_URL=http://127.0.0.1:3000   # proxy target (dev)

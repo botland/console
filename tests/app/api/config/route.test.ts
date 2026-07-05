@@ -12,6 +12,7 @@ describe('/api/config', () => {
   it('GET returns current config', async () => {
     const res = await GET(new Request("http://localhost"));
     const body = await res.json();
+    expect(res.status).toBe(200);
     expect(body.version).toBe(2);
   });
 

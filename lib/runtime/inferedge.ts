@@ -1,3 +1,4 @@
+import { effectiveApplianceState, hasDegradedSignals } from '@/lib/appliance-status';
 import { parseApplianceConfig } from '@/lib/schema';
 import type {
   ApplianceConfig,
@@ -28,8 +29,14 @@ interface InferedgeStatusResponse {
     timestamp: string;
     message: string;
     level: 'info' | 'warn' | 'error';
+    event?: string;
+    reconcile_seq?: number;
   }>;
   actual?: {
+    health?: string;
+    exit_code?: number | null;
+    log_snippet?: string | null;
+    current_model?: string | null;
     download_bytes?: number | null;
     download_current_file?: string | null;
   };
@@ -44,8 +51,23 @@ function mapApplianceState(state: string): ApplianceState {
 }
 
 function mapStatus(raw: InferedgeStatusResponse): ApplianceStatus {
-  const downloadBytes = raw.actual?.download_bytes;
-  return {
+  const actual = raw.actual;
+  const downloadBytes = actual?.download_bytes;
+  const runtimeActual =
+    actual &&
+    (actual.health != null ||
+      actual.exit_code != null ||
+      actual.log_snippet != null ||
+      actual.current_model != null)
+      ? {
+          health: actual.health,
+          exit_code: actual.exit_code ?? null,
+          log_snippet: actual.log_snippet ?? null,
+          current_model: actual.current_model ?? null,
+        }
+      : undefined;
+
+  const mapped: ApplianceStatus = {
     state: mapApplianceState(raw.state),
     last_error: raw.last_error ?? null,
     last_reconcile_ts: raw.last_reconcile_ts ?? Date.now() / 1000,
@@ -59,10 +81,15 @@ function mapStatus(raw: InferedgeStatusResponse): ApplianceStatus {
       downloadBytes != null
         ? {
             bytes: downloadBytes,
-            file: raw.actual?.download_current_file ?? '',
+            file: actual?.download_current_file ?? '',
           }
         : undefined,
+    actual: runtimeActual,
   };
+  if (hasDegradedSignals(mapped)) {
+    mapped.state = effectiveApplianceState(mapped);
+  }
+  return mapped;
 }
 
 export async function getStatus(): Promise<ApplianceStatus> {
@@ -75,21 +102,47 @@ export async function getConfig(): Promise<ApplianceConfig> {
   return parseApplianceConfig(raw);
 }
 
-export async function getCluster(): Promise<ClusterConfig> {
-  return controllerJson<ClusterConfig>('/cluster');
+export async function getOrchestration(): Promise<ClusterConfig> {
+  return controllerJson<ClusterConfig>('/orchestration');
 }
 
-export async function updateCluster(partial: ClusterConfig): Promise<ClusterConfig> {
-  return controllerJson<ClusterConfig>('/cluster', {
+/** @deprecated Use getOrchestration */
+export async function getCluster(): Promise<ClusterConfig> {
+  return getOrchestration();
+}
+
+export async function updateOrchestration(
+  partial: ClusterConfig,
+): Promise<import('@/lib/types').OrchestrationPutResponse> {
+  return controllerJson<import('@/lib/types').OrchestrationPutResponse>('/orchestration', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(partial),
   });
 }
 
+/** @deprecated Use updateOrchestration */
+export async function updateCluster(partial: ClusterConfig): Promise<ClusterConfig> {
+  return updateOrchestration(partial);
+}
+
+export async function detachFromCluster(): Promise<import('@/lib/types').OrchestrationPutResponse> {
+  return controllerJson<import('@/lib/types').OrchestrationPutResponse>('/orchestration/detach', {
+    method: 'POST',
+  });
+}
+
+export async function joinCluster(coordinatorAddress: string): Promise<import('@/lib/types').OrchestrationPutResponse & { coordinator_console_url?: string }> {
+  return controllerJson('/orchestration/join', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ coordinator_address: coordinatorAddress }),
+  });
+}
+
 export async function migrateHead(newHeadNodeId: string): Promise<MigrateHeadResult> {
   try {
-    return await controllerJson<MigrateHeadResult>('/cluster/migrate-head', {
+    return await controllerJson<MigrateHeadResult>('/orchestration/migrate-head', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ head_node_id: newHeadNodeId }),
@@ -171,12 +224,13 @@ export async function getGatewayStatus(): Promise<GatewayInfo> {
     return { ...raw.gateway, head_api_url: headApiUrl };
   }
 
-  const port = process.env.APPLIANCE_PORT ?? '3000';
+  const port = process.env.APPLIANCE_CONSOLE_PORT ?? process.env.APPLIANCE_PORT ?? '80';
   const headIp = raw.head?.head_ip ?? '127.0.0.1';
-  const localNodeId = process.env.APPLIANCE_LOCAL_NODE_ID ?? raw.head?.head_node_id ?? '';
+  const localNodeId = process.env.APPLIANCE_LOCAL_NODE_ID ?? '';
+  const isHead = localNodeId !== '' && localNodeId === raw.head?.head_node_id;
   return {
     local_node_id: localNodeId,
-    is_head: localNodeId !== '' && localNodeId === raw.head?.head_node_id,
+    is_head: isHead,
     head_api_url: `http://${headIp}:${port}/api`,
   };
 }

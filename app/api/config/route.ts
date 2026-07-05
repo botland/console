@@ -4,7 +4,16 @@ import { getConfig, setConfig } from '@/lib/runtime';
 import { runWithHeadAuthority } from '@/lib/runtime/gateway';
 
 export async function GET(req: Request) {
-  return runWithHeadAuthority(req, async () => NextResponse.json(await getConfig()));
+  return runWithHeadAuthority(req, async () => {
+    try {
+      return NextResponse.json(await getConfig());
+    } catch (e) {
+      return NextResponse.json(
+        { error: e instanceof Error ? e.message : 'Config unavailable' },
+        { status: 502 },
+      );
+    }
+  });
 }
 
 export async function PUT(req: NextRequest) {

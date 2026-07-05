@@ -220,6 +220,21 @@ describe('schema', () => {
     });
   });
 
+  it('parses null cluster optional fields from controller output', () => {
+    const parsed = parseApplianceConfig({
+      ...minimalConfig(),
+      cluster: {
+        ...minimalConfig().cluster,
+        compute_backend: 'cluster',
+        federation_layout: null,
+        head_gpu: null,
+      },
+    });
+    expect(parsed.cluster.compute_backend).toBe('cluster');
+    expect(parsed.cluster.federation_layout).toBeUndefined();
+    expect(parsed.cluster.head_gpu).toBeUndefined();
+  });
+
   it('throws on invalid config', () => {
     expect(() => parseApplianceConfig({ version: 99 })).toThrow('Invalid appliance configuration');
   });

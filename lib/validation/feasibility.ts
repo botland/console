@@ -1,5 +1,6 @@
+import { availableGpus, resolveDeploymentFormMode } from '@/lib/deployment-ui';
 import { deriveRecommendation } from '@/lib/planner';
-import type { ApplianceConfig, DeploymentConfig, ValidationResult } from '@/lib/types';
+import type { ApplianceConfig, DeploymentConfig, OrchestrationConfig, ValidationResult } from '@/lib/types';
 
 import { buildInventory } from './inventory';
 
@@ -27,9 +28,18 @@ function minVramOnNode(config: ApplianceConfig, gpusNeeded: number): number {
   return Math.max(0, ...perNodeVrams);
 }
 
+function isQuantizedModel(deployment: DeploymentConfig): boolean {
+  if (deployment.source.type !== 'huggingface') return false;
+  const repo = deployment.source.repo_id.toLowerCase();
+  return ['awq', 'gptq', 'fp8', 'marlin', 'quant', 'gguf', 'bnb'].some((tag) =>
+    repo.includes(tag),
+  );
+}
+
 export function validateDeployment(
   deployment: DeploymentConfig,
   config: ApplianceConfig,
+  orchestration?: OrchestrationConfig,
 ): ValidationResult {
   const inventory = buildInventory(config);
   const errors: string[] = [];
@@ -83,10 +93,41 @@ export function validateDeployment(
   const vramEstimate = estimateModelVramMb(deployment);
   const vramPerGpu = Math.ceil(vramEstimate / Math.max(1, gpus_per_instance));
   const minVram = minVramOnNode(config, gpus_per_instance);
-  if (minVram > 0 && vramPerGpu > minVram) {
+  if (minVram > 0 && vramPerGpu > minVram && !isQuantizedModel(deployment)) {
     warnings.push(
       `Estimated model size (~${Math.round(vramEstimate / 1024)} GB) may not fit in ${gpus_per_instance} GPU(s) with ${Math.round(minVram / 1024)} GB each.`,
     );
+  }
+
+  const formMode = resolveDeploymentFormMode(orchestration ?? config.cluster);
+  if (formMode.placementRequired) {
+    const targets = deployment.placement?.targets ?? [];
+    if (targets.length !== instances) {
+      errors.push(
+        `Select placement for all ${instances} instance(s): node and GPU target per instance.`,
+      );
+    }
+    for (let i = 0; i < targets.length; i += 1) {
+      const target = targets[i];
+      const node = config.nodes.find((item) => item.id === target.node_id);
+      if (!node) {
+        errors.push(`Instance ${i + 1}: unknown node ${target.node_id}.`);
+        continue;
+      }
+      if (target.gpu_indices.length !== gpus_per_instance) {
+        errors.push(
+          `Instance ${i + 1} on ${node.hostname}: select exactly ${gpus_per_instance} GPU(s).`,
+        );
+      }
+      const allowed = new Set(availableGpus(node));
+      for (const gpuIndex of target.gpu_indices) {
+        if (!allowed.has(gpuIndex)) {
+          errors.push(
+            `Instance ${i + 1} on ${node.hostname}: GPU ${gpuIndex} is unavailable or reserved.`,
+          );
+        }
+      }
+    }
   }
 
   if (deployment.source.type === 'local_path' && !deployment.source.path.startsWith('/')) {

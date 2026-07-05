@@ -31,11 +31,59 @@ describe('inferedge runtime', () => {
     const cluster = await inferedge.getCluster();
     expect(cluster.head_node_id).toBe('node-1');
     expect(fetch).toHaveBeenCalledWith(
-      'http://controller:8080/cluster',
+      'http://controller:8080/orchestration',
       expect.objectContaining({
         headers: expect.any(Headers),
       }),
     );
+  });
+
+  it('elevates READY to DEGRADED when actual reports load failure', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          state: 'READY',
+          last_error: null,
+          head: { head_node_id: 'node-1', head_ip: '10.0.0.1', head_epoch: 1 },
+          actual: {
+            health: 'HEALTHY',
+            exit_code: 1,
+            log_snippet: 'VRAM insufficient',
+          },
+        }),
+        { status: 200 },
+      ),
+    );
+
+    const status = await inferedge.getStatus();
+    expect(status.state).toBe('DEGRADED');
+  });
+
+  it('maps actual runtime warnings from controller status', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          state: 'READY',
+          last_error: null,
+          head: { head_node_id: 'node-1', head_ip: '10.0.0.1', head_epoch: 1 },
+          actual: {
+            health: 'HEALTHY',
+            exit_code: 1,
+            log_snippet: 'VRAM insufficient for model',
+            current_model: 'org/model',
+          },
+        }),
+        { status: 200 },
+      ),
+    );
+
+    const status = await inferedge.getStatus();
+    expect(status.actual).toEqual({
+      health: 'HEALTHY',
+      exit_code: 1,
+      log_snippet: 'VRAM insufficient for model',
+      current_model: 'org/model',
+    });
   });
 
   it('maps controller status to console appliance status', async () => {

@@ -1,13 +1,35 @@
-import { getConfig, getLocalNodeId, isHeadCoordinator } from './index';
+import { getLocalNodeId, isHeadCoordinator } from './index';
 
 export const COORDINATOR_HEADER = 'x-appliance-coordinator';
+export const LOCAL_NODE_HEADER = 'x-appliance-local-node';
+
+function headConsoleOrigin(): string | null {
+  const headConsole = process.env.HEAD_CONSOLE_URL?.trim();
+  if (!headConsole) {
+    return null;
+  }
+  try {
+    const parsed = new URL(headConsole);
+    parsed.pathname = '';
+    parsed.search = '';
+    parsed.hash = '';
+    return parsed.origin;
+  } catch {
+    return null;
+  }
+}
 
 export async function getHeadApiBase(): Promise<string> {
   if (process.env.APPLIANCE_HEAD_INTERNAL_URL) {
     return process.env.APPLIANCE_HEAD_INTERNAL_URL.replace(/\/$/, '');
   }
+  const fromHeadConsole = headConsoleOrigin();
+  if (fromHeadConsole) {
+    return fromHeadConsole;
+  }
+  const { getConfig } = await import('./index');
   const config = await getConfig();
-  const port = process.env.APPLIANCE_PORT ?? '3000';
+  const port = process.env.APPLIANCE_CONSOLE_PORT ?? '80';
   return `http://${config.system.network.head_ip}:${port}`;
 }
 
@@ -24,48 +46,10 @@ export function isCoordinatorRequest(req: Request): boolean {
   return req.headers.get(COORDINATOR_HEADER) === 'true';
 }
 
-function useInternalProxy(): boolean {
-  return process.env.APPLIANCE_GATEWAY_INTERNAL === '1';
-}
-
-export async function proxyToHead(req: Request): Promise<Response> {
-  if (useInternalProxy()) {
-    throw new Error('INTERNAL_PROXY_DELEGATE');
-  }
-
-  const incoming = new URL(req.url);
-  const headBase = await getHeadApiBase();
-  const target = `${headBase}${incoming.pathname}${incoming.search}`;
-  const headers = new Headers(req.headers);
-  headers.set(COORDINATOR_HEADER, 'true');
-
-  const init: RequestInit = {
-    method: req.method,
-    headers,
-    duplex: 'half',
-  } as RequestInit;
-
-  if (req.method !== 'GET' && req.method !== 'HEAD') {
-    init.body = req.body;
-  }
-
-  return fetch(target, init);
-}
-
+/** Console always talks to the local controller — no head console proxy. */
 export async function runWithHeadAuthority(
-  req: Request,
+  _req: Request,
   handler: () => Promise<Response>,
 ): Promise<Response> {
-  if ((await isHeadCoordinator()) || isCoordinatorRequest(req)) {
-    return handler();
-  }
-
-  try {
-    return await proxyToHead(req);
-  } catch (error) {
-    if (error instanceof Error && error.message === 'INTERNAL_PROXY_DELEGATE') {
-      return handler();
-    }
-    throw error;
-  }
+  return handler();
 }

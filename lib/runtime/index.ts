@@ -8,6 +8,7 @@ import type {
   MigrateHeadResult,
   NodeAgentState,
   NodeConfig,
+  OrchestrationPutResponse,
   StorageMount,
 } from '@/lib/types';
 
@@ -29,34 +30,68 @@ export async function getConfig(): Promise<ApplianceConfig> {
   return isInferedgeRuntime() ? inferedge.getConfig() : mock.getConfig();
 }
 
-export async function getCluster(): Promise<ClusterConfig> {
-  if (isInferedgeRuntime()) return inferedge.getCluster();
+export async function getOrchestration(): Promise<ClusterConfig> {
+  if (isInferedgeRuntime()) return inferedge.getOrchestration();
   return mock.getConfig().cluster;
+}
+
+/** @deprecated Use getOrchestration */
+export async function getCluster(): Promise<ClusterConfig> {
+  return getOrchestration();
 }
 
 export async function setConfig(config: unknown): Promise<ApplianceConfig> {
   return isInferedgeRuntime() ? inferedge.setConfig(config) : mock.setConfig(config);
 }
 
-export async function updateCluster(partial: Partial<ClusterConfig>): Promise<ApplianceConfig> {
+export async function putOrchestration(cluster: ClusterConfig): Promise<OrchestrationPutResponse> {
+  if (isInferedgeRuntime()) {
+    return inferedge.updateOrchestration(cluster);
+  }
+  const config = mock.updateCluster(cluster);
+  return {
+    ...config.cluster,
+    federation_auto_placement: true,
+    reconcile_seq: null,
+  };
+}
+
+export async function updateOrchestration(partial: Partial<ClusterConfig>): Promise<ApplianceConfig> {
   if (isInferedgeRuntime()) {
     if (partial.head_node_id) {
-      const current = await inferedge.getCluster();
+      const current = await inferedge.getOrchestration();
       if (partial.head_node_id !== current.head_node_id) {
         await inferedge.migrateHead(partial.head_node_id);
         return inferedge.getConfig();
       }
     }
-    const current = await inferedge.getCluster();
-    await inferedge.updateCluster({ ...current, ...partial });
+    const current = await inferedge.getOrchestration();
+    await inferedge.updateOrchestration({ ...current, ...partial });
     const config = await inferedge.getConfig();
     return config;
   }
   return mock.updateCluster(partial);
 }
 
+/** @deprecated Use updateOrchestration */
+export async function updateCluster(partial: Partial<ClusterConfig>): Promise<ApplianceConfig> {
+  return updateOrchestration(partial);
+}
+
 export async function migrateHead(newHeadNodeId: string): Promise<MigrateHeadResult> {
   return isInferedgeRuntime() ? inferedge.migrateHead(newHeadNodeId) : mock.migrateHead(newHeadNodeId);
+}
+
+export async function detachFromCluster(): Promise<OrchestrationPutResponse> {
+  return isInferedgeRuntime() ? inferedge.detachFromCluster() : mock.detachFromCluster();
+}
+
+export async function joinCluster(
+  coordinatorAddress: string,
+): Promise<OrchestrationPutResponse & { coordinator_console_url?: string }> {
+  return isInferedgeRuntime()
+    ? inferedge.joinCluster(coordinatorAddress)
+    : mock.joinCluster(coordinatorAddress);
 }
 
 export async function listNodesWithAgents(): Promise<Array<NodeConfig & { agent?: NodeAgentState }>> {

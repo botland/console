@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 
+import { normalizeClusterPatch } from '@/lib/orchestration';
 import { parseApplianceConfig } from '@/lib/schema';
 import type {
   ApplianceConfig,
@@ -146,13 +147,18 @@ export function setConfig(config: unknown): ApplianceConfig {
   return parsed;
 }
 
-export function addEvent(message: string, level: ReconcileEvent['level'] = 'info'): void {
+export function addEvent(
+  message: string,
+  level: ReconcileEvent['level'] = 'info',
+  extra?: Pick<ReconcileEvent, 'event' | 'reconcile_seq'>,
+): void {
   const state = getState();
   state.status.events.unshift({
     id: `evt-${Date.now()}`,
     timestamp: new Date().toISOString(),
     message,
     level,
+    ...extra,
   });
   state.status.events = state.status.events.slice(0, 50);
   state.status.last_reconcile_ts = Date.now() / 1000;
@@ -176,7 +182,7 @@ export function startReconcile(message: string): void {
     for (const dep of s.config.deployments) {
       if (dep.enabled) dep.status = 'healthy';
     }
-    addEvent('Reconciliation complete — all enabled deployments healthy', 'info');
+    addEvent('Model serving ready', 'info', { event: 'reconcile_ready' });
     broadcast('cluster.state', { state: 'READY', last_error: null });
     saveState(s);
   }, duration);
@@ -202,7 +208,7 @@ export function updateCluster(partial: Partial<ApplianceConfig['cluster']>): App
     return getState().config;
   }
 
-  state.config.cluster = { ...state.config.cluster, ...partial };
+  state.config.cluster = normalizeClusterPatch(state.config.cluster, partial);
   syncHeadFlags(state.config);
   state.status.head = headPayload(state.config);
   saveState(state);
@@ -270,6 +276,66 @@ export function migrateHead(newHeadNodeId: string): MigrateHeadResult {
       to_node_id: newHeadNodeId,
       deployments_rescheduled: enabledCount,
     },
+  };
+}
+
+export function detachFromCluster(): import('@/lib/types').OrchestrationPutResponse {
+  const state = getState();
+  const localId = state.local_node_id;
+  const cluster = state.config.cluster;
+  if (cluster.head_node_id === localId) {
+    throw new Error('Coordinator cannot detach from its own cluster');
+  }
+  if (cluster.serving_mode !== 'distributed') {
+    throw new Error('Detach is only available while in distributed mode');
+  }
+  const localNode = state.config.nodes.find((n) => n.id === localId);
+  const localIp = localNode?.ip ?? state.config.system.network.head_ip;
+  cluster.serving_mode = 'standalone';
+  cluster.compute_backend = 'federation';
+  cluster.head_gpu = true;
+  cluster.head_node_id = localId;
+  cluster.head_epoch += 1;
+  state.config.system.network.head_ip = localIp;
+  syncHeadFlags(state.config);
+  state.status.head = headPayload(state.config);
+  addEvent(`Node ${localId} detached from cluster — now standalone`, 'warn');
+  saveState(state);
+  startReconcile('Detached from cluster — restarting standalone inference');
+  return { ...cluster, federation_auto_placement: true, reconcile_seq: null };
+}
+
+export function joinCluster(
+  coordinatorAddress: string,
+): import('@/lib/types').OrchestrationPutResponse & { coordinator_console_url?: string } {
+  const state = getState();
+  const localId = state.local_node_id;
+  const cluster = state.config.cluster;
+  if (cluster.serving_mode !== 'standalone') {
+    throw new Error('Join is only available in standalone mode');
+  }
+  const host = coordinatorAddress.replace(/^https?:\/\//, '').split(':')[0].trim();
+  const coordinator = state.config.nodes.find((n) => n.ip === host || n.id === host);
+  const headNode = coordinator ?? state.config.nodes.find((n) => n.is_head);
+  if (!headNode || headNode.id === localId) {
+    throw new Error('Coordinator not found — open its console first or check the address');
+  }
+  cluster.serving_mode = 'distributed';
+  cluster.compute_backend = cluster.compute_backend ?? 'federation';
+  cluster.head_node_id = headNode.id;
+  cluster.head_epoch = Math.max(cluster.head_epoch, headNode.is_head ? cluster.head_epoch : 1);
+  state.config.system.network.head_ip = headNode.ip;
+  syncHeadFlags(state.config);
+  state.status.head = headPayload(state.config);
+  repointAgentsToHead(state, headNode.id);
+  addEvent(`Joined cluster at coordinator ${headNode.hostname} (${headNode.ip})`, 'warn');
+  saveState(state);
+  startReconcile('Joined cluster — rescheduling workloads');
+  return {
+    ...cluster,
+    federation_auto_placement: true,
+    reconcile_seq: null,
+    coordinator_console_url: `http://${headNode.ip}`,
   };
 }
 
