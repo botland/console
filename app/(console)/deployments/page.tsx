@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Plus, Pencil, Trash2 } from 'lucide-react';
+import { Plus, Pencil, Power, PowerOff, Trash2 } from 'lucide-react';
 
 import { DeploymentForm } from '@/components/DeploymentForm';
 import { PageError, PageLoading } from '@/components/PageState';
@@ -68,6 +68,20 @@ export default function DeploymentsPage() {
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this deployment?')) return;
     await api.deleteDeployment(id);
+    load();
+  };
+
+  const handleToggle = async (dep: DeploymentConfig) => {
+    const next = { ...dep, enabled: !dep.enabled };
+    if (next.enabled) {
+      const validation = await api.validate(next);
+      if (!validation.valid) {
+        setError(validation.errors.join(' '));
+        return;
+      }
+    }
+    setError(null);
+    await api.updateDeployment(dep.id, next);
     load();
   };
 
@@ -157,6 +171,18 @@ export default function DeploymentsPage() {
             </div>
             {canManage && (
               <div className="flex gap-2">
+                <Button
+                  variant="secondary"
+                  onClick={() => handleToggle(dep)}
+                  title={dep.enabled ? 'Disable deployment' : 'Enable deployment'}
+                  aria-label={dep.enabled ? 'Disable deployment' : 'Enable deployment'}
+                >
+                  {dep.enabled ? (
+                    <PowerOff className="w-4 h-4" />
+                  ) : (
+                    <Power className="w-4 h-4" />
+                  )}
+                </Button>
                 <Button variant="secondary" onClick={() => setEditing(dep)}>
                   <Pencil className="w-4 h-4" />
                 </Button>
