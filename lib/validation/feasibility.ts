@@ -1,8 +1,17 @@
-import { availableGpus, resolveDeploymentFormMode } from '@/lib/deployment-ui';
+import {
+  availableGpus,
+  deploymentUsesManualPlacement,
+  resolveDeploymentFormMode,
+} from '@/lib/deployment-ui';
+import { resolveComputeBackend } from '@/lib/orchestration';
 import { deriveRecommendation } from '@/lib/planner';
 import type { ApplianceConfig, DeploymentConfig, OrchestrationConfig, ValidationResult } from '@/lib/types';
 
+import { effectiveInstances, peakGpuDemand } from '@/lib/parallelism';
+
 import { buildInventory } from './inventory';
+
+const DEFAULT_GPU_UTILIZATION = 0.85;
 
 function estimateModelVramMb(deployment: DeploymentConfig): number {
   if (deployment.source.type === 'local_path') return 16_000;
@@ -36,6 +45,91 @@ function isQuantizedModel(deployment: DeploymentConfig): boolean {
   );
 }
 
+function gpuUtilization(deployment: DeploymentConfig): number {
+  const raw = deployment.parallelism.gpu_utilization;
+  if (typeof raw === 'number' && raw > 0 && raw <= 1) return raw;
+  return DEFAULT_GPU_UTILIZATION;
+}
+
+function gpuKey(nodeId: string, gpuIndex: number): string {
+  return `${nodeId}:${gpuIndex}`;
+}
+
+function mergeEnabledDeployments(
+  config: ApplianceConfig,
+  deployment: DeploymentConfig,
+): DeploymentConfig[] {
+  const existing = config.deployments.filter((item) => item.enabled && item.id !== deployment.id);
+  if (deployment.enabled) {
+    return [...existing, deployment];
+  }
+  return existing;
+}
+
+function validateCrossDeploymentGpuBudget(
+  deployments: DeploymentConfig[],
+  config: ApplianceConfig,
+  orchestration: OrchestrationConfig | undefined,
+  errors: string[],
+  warnings: string[],
+): void {
+  if (deployments.length <= 1) return;
+
+  const inventory = buildInventory(config);
+  const cluster = orchestration ?? config.cluster;
+  const budget = new Map<string, number>();
+  let totalPeakGpus = 0;
+
+  for (const dep of deployments) {
+    const util = gpuUtilization(dep);
+    const instances = effectiveInstances(dep, inventory);
+    totalPeakGpus += peakGpuDemand(dep, inventory);
+
+    const targets = dep.placement?.targets ?? [];
+    if (!deploymentUsesManualPlacement(dep, cluster) || targets.length === 0) continue;
+
+    for (let i = 0; i < Math.min(instances, targets.length); i += 1) {
+      const target = targets[i];
+      for (const gpuIndex of target.gpu_indices) {
+        const key = gpuKey(target.node_id, gpuIndex);
+        budget.set(key, (budget.get(key) ?? 0) + util);
+      }
+    }
+  }
+
+  for (const [key, used] of budget) {
+    if (used > 1.0001) {
+      const [nodeId, gpuIndex] = key.split(':');
+      const node = config.nodes.find((item) => item.id === nodeId);
+      const label = node ? `${node.hostname} GPU ${gpuIndex}` : `GPU ${gpuIndex} on ${nodeId}`;
+      errors.push(
+        `Combined GPU memory utilization on ${label} exceeds 100% (${Math.round(used * 100)}%). ` +
+          'Lower gpu utilization or choose different GPUs across deployments.',
+      );
+    } else if (used > 0.9) {
+      warnings.push(
+        `GPU ${key} is nearly full across enabled deployments (${Math.round(used * 100)}% utilization budget).`,
+      );
+    }
+  }
+
+  const distributedFederation =
+    config.cluster.serving_mode === 'distributed' &&
+    resolveComputeBackend(orchestration ?? config.cluster) === 'federation';
+
+  const clusterBackend =
+    config.cluster.serving_mode === 'distributed' &&
+    resolveComputeBackend(orchestration ?? config.cluster) === 'cluster';
+
+  if (clusterBackend || !distributedFederation) {
+    if (totalPeakGpus > inventory.available_gpu_count) {
+      errors.push(
+        `Enabled deployments need up to ${totalPeakGpus} GPU(s) at peak but only ${inventory.available_gpu_count} are available.`,
+      );
+    }
+  }
+}
+
 export function validateDeployment(
   deployment: DeploymentConfig,
   config: ApplianceConfig,
@@ -46,8 +140,9 @@ export function validateDeployment(
   const warnings: string[] = [];
   const suggested = deriveRecommendation(deployment, config);
 
-  const { instances, gpus_per_instance, nodes_per_instance } = deployment.parallelism;
-  const gpusRequired = instances * gpus_per_instance * nodes_per_instance;
+  const instances = effectiveInstances(deployment, inventory);
+  const { gpus_per_instance, nodes_per_instance } = deployment.parallelism;
+  const gpusRequired = peakGpuDemand(deployment, inventory);
   const standalone = config.cluster.serving_mode === 'standalone';
 
   if (!inventory.head_online) {
@@ -58,6 +153,11 @@ export function validateDeployment(
     errors.push(
       `This deployment needs ${gpusRequired} GPUs but only ${inventory.available_gpu_count} are available.`,
     );
+  }
+
+  const util = gpuUtilization(deployment);
+  if (util <= 0 || util > 1) {
+    errors.push('GPU utilization must be between 0 and 1 (e.g. 0.85).');
   }
 
   if (standalone) {
@@ -99,7 +199,7 @@ export function validateDeployment(
     );
   }
 
-  const formMode = resolveDeploymentFormMode(orchestration ?? config.cluster);
+  const formMode = resolveDeploymentFormMode(orchestration ?? config.cluster, deployment);
   if (formMode.placementRequired) {
     const targets = deployment.placement?.targets ?? [];
     if (targets.length !== instances) {
@@ -137,6 +237,22 @@ export function validateDeployment(
   if (!deployment.display_name.trim()) {
     errors.push('Display name is required.');
   }
+
+  const clusterBackend =
+    !standalone && resolveComputeBackend(orchestration ?? config.cluster) === 'cluster';
+  if (clusterBackend && nodes_per_instance > 1 && instances > 1) {
+    warnings.push(
+      'Large-model pipeline parallelism with multiple replicas may require substantial cluster GPU capacity.',
+    );
+  }
+
+  validateCrossDeploymentGpuBudget(
+    mergeEnabledDeployments(config, deployment),
+    config,
+    orchestration,
+    errors,
+    warnings,
+  );
 
   return {
     valid: errors.length === 0,

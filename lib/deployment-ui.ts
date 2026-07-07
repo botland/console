@@ -1,5 +1,10 @@
 import { resolveComputeBackend } from '@/lib/orchestration';
-import type { NodeConfig, OrchestrationConfig } from '@/lib/types';
+import type {
+  DeploymentConfig,
+  DeploymentPlacement,
+  NodeConfig,
+  OrchestrationConfig,
+} from '@/lib/types';
 
 export interface DeploymentFormMode {
   standalone: boolean;
@@ -10,12 +15,37 @@ export interface DeploymentFormMode {
   federationReplicated: boolean;
   showNodesPerInstance: boolean;
   showAutoscaling: boolean;
+  canChoosePlacement: boolean;
   showPlacement: boolean;
   placementRequired: boolean;
 }
 
+export function resolvePlacementMode(
+  placement?: DeploymentPlacement,
+  cluster?: OrchestrationConfig,
+): 'auto' | 'manual' {
+  if (placement?.mode === 'manual' || placement?.mode === 'auto') {
+    return placement.mode;
+  }
+  if (placement?.targets?.length) {
+    return 'manual';
+  }
+  if (cluster?.federation_auto_placement === false) {
+    return 'manual';
+  }
+  return 'auto';
+}
+
+export function deploymentUsesManualPlacement(
+  deployment?: Pick<DeploymentConfig, 'placement'>,
+  cluster?: OrchestrationConfig,
+): boolean {
+  return resolvePlacementMode(deployment?.placement, cluster) === 'manual';
+}
+
 export function resolveDeploymentFormMode(
   cluster: OrchestrationConfig,
+  deployment?: Pick<DeploymentConfig, 'placement'>,
 ): DeploymentFormMode {
   const standalone = cluster.serving_mode === 'standalone';
   const distributed = cluster.serving_mode === 'distributed';
@@ -24,7 +54,8 @@ export function resolveDeploymentFormMode(
   const layout = cluster.federation_layout ?? 'replicated';
   const federationDiverse = distributed && federation && layout === 'diverse';
   const federationReplicated = distributed && federation && layout === 'replicated';
-  const manualPlacement = cluster.federation_auto_placement === false;
+  const canChoosePlacement = distributed && federation;
+  const manualPlacement = canChoosePlacement && deploymentUsesManualPlacement(deployment, cluster);
 
   return {
     standalone,
@@ -35,8 +66,9 @@ export function resolveDeploymentFormMode(
     federationReplicated,
     showNodesPerInstance: distributed && clusterBackend,
     showAutoscaling: clusterBackend,
-    showPlacement: distributed && federation && manualPlacement,
-    placementRequired: distributed && federation && manualPlacement,
+    canChoosePlacement,
+    showPlacement: manualPlacement,
+    placementRequired: manualPlacement,
   };
 }
 

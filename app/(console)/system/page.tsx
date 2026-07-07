@@ -116,26 +116,19 @@ export default function SystemPage() {
             <Card className="space-y-4 lg:col-span-2">
               <h2 className="font-display font-semibold text-slate-100">This appliance</h2>
               <p className="text-sm text-slate-400">
-                Currently {formatNodeLabel(identity.hostname, identity.ip)}. Hostname identifies
-                this machine in the cluster.
+                Currently {formatNodeLabel(identity.hostname, identity.ip)}. Hostname and IP
+                identify this machine in the cluster.
               </p>
-              <div className="max-w-md">
-                <Label>Hostname</Label>
-                <Input
-                  value={identity.hostname}
-                  onChange={(e) =>
-                    setIdentity({ ...identity, hostname: e.target.value })
-                  }
-                />
-              </div>
-            </Card>
-
-            <Card className="space-y-4 lg:col-span-2">
-              <h2 className="font-display font-semibold text-slate-100">Network</h2>
-              <p className="text-sm text-slate-400">
-                IP, gateway, and DNS apply to the host network stack on this appliance.
-              </p>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl">
+                <div>
+                  <Label>Hostname</Label>
+                  <Input
+                    value={identity.hostname}
+                    onChange={(e) =>
+                      setIdentity({ ...identity, hostname: e.target.value })
+                    }
+                  />
+                </div>
                 <div>
                   <Label>IP address</Label>
                   <Input
@@ -143,6 +136,15 @@ export default function SystemPage() {
                     onChange={(e) => setIdentity({ ...identity, ip: e.target.value })}
                   />
                 </div>
+              </div>
+            </Card>
+
+            <Card className="space-y-4 lg:col-span-2">
+              <h2 className="font-display font-semibold text-slate-100">Network</h2>
+              <p className="text-sm text-slate-400">
+                Gateway and DNS apply to the host network stack on this appliance.
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl">
                 <div>
                   <Label>Gateway</Label>
                   <Input

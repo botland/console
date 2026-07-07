@@ -392,8 +392,16 @@ export default function OrchestrationPage() {
                   <div className="grid grid-cols-2 gap-3 mt-2">
                     {(
                       [
-                        ['replicated', 'Replicated (throughput)', 'Same model across nodes'],
-                        ['diverse', 'Diverse (multi-model)', 'Multiple enabled deployments'],
+                        [
+                          'replicated',
+                          'Replicated (throughput)',
+                          'Spread each model’s replicas across nodes',
+                        ],
+                        [
+                          'diverse',
+                          'Diverse (spread)',
+                          'Prefer different models on different nodes',
+                        ],
                       ] as const
                     ).map(([value, title, hint]) => (
                       <button
@@ -417,6 +425,10 @@ export default function OrchestrationPage() {
                       </button>
                     ))}
                   </div>
+                  <p className="mt-2 text-xs text-slate-500">
+                    Enable multiple models in either layout when GPUs and VRAM allow. Layout
+                    only changes auto-placement preference.
+                  </p>
                 </div>
               )}
 

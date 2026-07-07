@@ -266,7 +266,7 @@ describe('validateDeployment', () => {
     expect(result.warnings.some((w) => w.includes('Estimated model size'))).toBe(true);
   });
 
-  it('requires placement targets when federation manual placement is enabled', () => {
+  it('requires placement targets when deployment placement mode is manual', () => {
     const config = minimalConfig({
       cluster: {
         ...minimalConfig().cluster,
@@ -275,11 +275,8 @@ describe('validateDeployment', () => {
         federation_layout: 'diverse',
       },
     });
-    const dep = sampleDeployment({ placement: undefined });
-    const result = validateDeployment(dep, config, {
-      ...config.cluster,
-      federation_auto_placement: false,
-    });
+    const dep = sampleDeployment({ placement: { mode: 'manual' } });
+    const result = validateDeployment(dep, config);
     expect(result.valid).toBe(false);
     expect(result.errors[0]).toContain('placement');
   });
@@ -294,13 +291,117 @@ describe('validateDeployment', () => {
       },
     });
     const dep = sampleDeployment({
-      placement: { targets: [{ node_id: 'node-1', gpu_indices: [0] }] },
+      placement: {
+        mode: 'manual',
+        targets: [{ node_id: 'node-1', gpu_indices: [0] }],
+      },
     });
+    const result = validateDeployment(dep, config);
+    expect(result.valid).toBe(true);
+  });
+
+  it('skips placement validation when deployment placement mode is auto', () => {
+    const config = minimalConfig({
+      cluster: {
+        ...minimalConfig().cluster,
+        serving_mode: 'distributed',
+        compute_backend: 'federation',
+        federation_layout: 'diverse',
+      },
+    });
+    const dep = sampleDeployment({ placement: { mode: 'auto' } });
     const result = validateDeployment(dep, config, {
       ...config.cluster,
       federation_auto_placement: false,
     });
     expect(result.valid).toBe(true);
+  });
+
+  it('rejects cluster peak GPU demand across deployments with PP', () => {
+    const config = minimalConfig({
+      cluster: {
+        ...minimalConfig().cluster,
+        serving_mode: 'distributed',
+        compute_backend: 'cluster',
+      },
+      deployments: [
+        sampleDeployment({
+          id: 'dep-a',
+          parallelism: {
+            context_length: 8192,
+            quantization: null,
+            instances: 1,
+            gpus_per_instance: 4,
+            nodes_per_instance: 2,
+            autoscaling: null,
+          },
+        }),
+      ],
+    });
+    const depB = sampleDeployment({
+      id: 'dep-b',
+      parallelism: {
+        context_length: 8192,
+        quantization: null,
+        instances: 1,
+        gpus_per_instance: 4,
+        nodes_per_instance: 2,
+        autoscaling: null,
+      },
+    });
+    const result = validateDeployment(depB, config);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes('at peak'))).toBe(true);
+  });
+
+  it('rejects combined GPU utilization above 100% across deployments', () => {
+    const config = minimalConfig({
+      cluster: {
+        ...minimalConfig().cluster,
+        serving_mode: 'distributed',
+        compute_backend: 'federation',
+        federation_layout: 'diverse',
+      },
+      deployments: [
+        sampleDeployment({
+          id: 'dep-a',
+          display_name: 'model-a',
+          parallelism: {
+            context_length: 8192,
+            quantization: null,
+            instances: 1,
+            gpus_per_instance: 1,
+            nodes_per_instance: 1,
+            gpu_utilization: 0.6,
+            autoscaling: null,
+          },
+          placement: {
+            mode: 'manual',
+            targets: [{ node_id: 'node-1', gpu_indices: [0] }],
+          },
+        }),
+      ],
+    });
+    const depB = sampleDeployment({
+      id: 'dep-b',
+      display_name: 'model-b',
+      parallelism: {
+        context_length: 8192,
+        quantization: null,
+        instances: 1,
+        gpus_per_instance: 1,
+        nodes_per_instance: 1,
+        gpu_utilization: 0.6,
+        autoscaling: null,
+      },
+      placement: {
+        mode: 'manual',
+        targets: [{ node_id: 'node-1', gpu_indices: [0] }],
+      },
+    });
+    const result = validateDeployment(depB, config);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes('exceeds 100%'))).toBe(true);
   });
 
   it('skips VRAM warning for quantized repo ids', () => {

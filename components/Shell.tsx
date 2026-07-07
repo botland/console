@@ -29,7 +29,7 @@ const NAV_META: Record<
   { label: string; icon: typeof LayoutDashboard }
 > = {
   overview: { label: 'Overview', icon: LayoutDashboard },
-  deployments: { label: 'Deployments', icon: Box },
+  deployments: { label: 'Models', icon: Box },
   orchestration: { label: 'Orchestration', icon: Network },
   nodes: { label: 'Nodes', icon: Server },
   storage: { label: 'Storage', icon: HardDrive },

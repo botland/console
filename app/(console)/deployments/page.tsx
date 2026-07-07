@@ -97,11 +97,11 @@ export default function DeploymentsPage() {
   return (
     <>
       <PageHeader
-        title="Deployments"
+        title="Models"
         description={
           localWorkloads
             ? 'Workloads assigned to this appliance in the cluster'
-            : 'Models served on this appliance'
+            : 'Inference models on this appliance (API: deployments)'
         }
         action={
           canManage ? (
