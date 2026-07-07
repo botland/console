@@ -11,6 +11,7 @@ import {
   Server,
   Settings,
   Sliders,
+  LifeBuoy,
 } from 'lucide-react';
 
 import { ApplianceIdentityBar } from '@/components/ApplianceIdentityBar';
@@ -34,6 +35,7 @@ const NAV_META: Record<
   nodes: { label: 'Nodes', icon: Server },
   storage: { label: 'Storage', icon: HardDrive },
   system: { label: 'System', icon: Settings },
+  support: { label: 'Support', icon: LifeBuoy },
   config: { label: 'Config', icon: Sliders },
 };
 
@@ -46,6 +48,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
     'nodes',
     'storage',
     'system',
+    'support',
     'config',
   ]);
   const [footer, setFooter] = useState<string | null>(null);

@@ -172,4 +172,24 @@ export const api = {
 
   deleteMount: (id: string) =>
     fetchJson<{ deleted: boolean }>(`/api/storage/mounts/${id}`, { method: 'DELETE' }),
+
+  supportEntitlement: () => fetchJson<import('@/lib/support/types').EntitlementResponse>('/api/support/entitlement'),
+
+  supportPreview: (note = '') =>
+    fetchJson<import('@/lib/support/types').DiagnosticBundle>(
+      `/api/support/preview?note=${encodeURIComponent(note)}`,
+    ),
+
+  supportSubmit: (userNote = '') =>
+    fetchJson<{ ticket_id: string; status: string }>('/api/support/submit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_note: userNote }),
+    }),
+
+  supportTicket: (id: string) =>
+    fetchJson<import('@/lib/support/types').TicketStatusResponse>(`/api/support/tickets/${id}`),
+
+  supportTickets: () =>
+    fetchJson<import('@/lib/support/types').TicketListResponse>('/api/support/tickets'),
 };

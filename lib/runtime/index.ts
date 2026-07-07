@@ -198,6 +198,23 @@ export async function proxyWsStream(): Promise<Response> {
   return inferedge.proxyWsStream();
 }
 
+export async function getSupportDiagnostics(): Promise<import('@/lib/support/types').SupportDiagnostics> {
+  if (isInferedgeRuntime()) {
+    return inferedge.getSupportDiagnostics();
+  }
+  const { getConfig } = await import('@/lib/mock/store');
+  const { mockSupportDiagnostics } = await import('@/lib/support/diagnostics');
+  const config = getConfig();
+  return mockSupportDiagnostics(config.appliance_id);
+}
+
+export async function getControllerVersion(): Promise<string> {
+  if (isInferedgeRuntime()) {
+    return inferedge.getControllerVersion();
+  }
+  return 'mock';
+}
+
 export function resetTestState(options?: Parameters<typeof mock.resetTestState>[0]): void {
   mock.resetTestState(options);
 }

@@ -97,6 +97,15 @@ export async function getStatus(): Promise<ApplianceStatus> {
   return mapStatus(raw);
 }
 
+export async function getSupportDiagnostics(): Promise<import('@/lib/support/types').SupportDiagnostics> {
+  return controllerJson<import('@/lib/support/types').SupportDiagnostics>('/support/diagnostics');
+}
+
+export async function getControllerVersion(): Promise<string> {
+  const health = await controllerJson<{ version?: string }>('/health');
+  return health.version ?? 'unknown';
+}
+
 export async function getConfig(): Promise<ApplianceConfig> {
   const raw = await controllerJson<unknown>('/config');
   return parseApplianceConfig(raw);
