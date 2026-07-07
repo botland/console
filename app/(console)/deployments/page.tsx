@@ -136,7 +136,9 @@ export default function DeploymentsPage() {
       <div className="space-y-4">
         {deployments
           .filter((dep) => editing === 'new' || editing === null || dep.id !== editing.id)
-          .map((dep) => (
+          .map((dep) => {
+            const placementTarget = dep.placement?.targets?.[0];
+            return (
           <Card key={dep.id} className="flex flex-wrap items-center justify-between gap-4">
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-3 flex-wrap">
@@ -156,17 +158,17 @@ export default function DeploymentsPage() {
               <div className="mt-1 text-xs text-slate-500">
                 {dep.parallelism.instances} instance(s) · {dep.parallelism.gpus_per_instance}{' '}
                 GPU(s)/instance · {dep.user_intent.performance_goal.replace('_', ' ')}
-                {dep.placement?.targets?.[0] && (
+                {placementTarget && (
                   <>
                     {' '}
                     ·{' '}
                     {formatNodeLabelFromNode(
-                      nodes.find((n) => n.id === dep.placement!.targets[0].node_id) ?? {
-                        hostname: dep.placement.targets[0].node_id,
+                      nodes.find((n) => n.id === placementTarget.node_id) ?? {
+                        hostname: placementTarget.node_id,
                         ip: '',
                       },
                     )}{' '}
-                    gpu{dep.placement.targets[0].gpu_indices.join(',')}
+                    gpu{placementTarget.gpu_indices.join(',')}
                   </>
                 )}
               </div>
@@ -194,7 +196,8 @@ export default function DeploymentsPage() {
               </div>
             )}
           </Card>
-          ))}
+            );
+          })}
         {!error &&
           deployments.filter(
             (dep) => editing === 'new' || editing === null || dep.id !== editing.id,
