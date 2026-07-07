@@ -134,7 +134,9 @@ export default function DeploymentsPage() {
       )}
 
       <div className="space-y-4">
-        {deployments.map((dep) => (
+        {deployments
+          .filter((dep) => editing === 'new' || editing === null || dep.id !== editing.id)
+          .map((dep) => (
           <Card key={dep.id} className="flex flex-wrap items-center justify-between gap-4">
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-3 flex-wrap">
@@ -192,8 +194,12 @@ export default function DeploymentsPage() {
               </div>
             )}
           </Card>
-        ))}
-        {!error && deployments.length === 0 && (
+          ))}
+        {!error &&
+          deployments.filter(
+            (dep) => editing === 'new' || editing === null || dep.id !== editing.id,
+          ).length === 0 &&
+          editing !== 'new' && (
           <Card className="text-center text-slate-500 py-12">
             No deployments yet. Add a model to get started.
           </Card>
