@@ -56,7 +56,7 @@ export default function OverviewPage() {
   const modeLabel =
     config?.cluster.serving_mode === 'distributed' ? 'Distributed' : config ? 'Standalone' : '—';
   const headNode = config?.nodes.find((n) => n.is_head);
-  const degradedSignals = hasDegradedSignals(status);
+  const degradedSignals = hasDegradedSignals(status, config);
 
   return (
     <>
@@ -94,7 +94,7 @@ export default function OverviewPage() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
         <Card>
           <div className="text-xs text-slate-500 mb-2">State</div>
-          <ApplianceBadge state={effectiveApplianceState(status)} />
+          <ApplianceBadge state={effectiveApplianceState(status, config)} />
         </Card>
         <Card>
           <div className="text-xs text-slate-500 mb-2">Serving topology</div>

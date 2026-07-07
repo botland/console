@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { effectiveApplianceState, hasDegradedSignals } from '@/lib/appliance-status';
-import type { ApplianceStatus } from '@/lib/types';
+import {
+  effectiveApplianceState,
+  hasDegradedSignals,
+  isStaleRuntimeWarning,
+} from '@/lib/appliance-status';
+import type { ApplianceConfig, ApplianceStatus } from '@/lib/types';
 
 const baseStatus = (): ApplianceStatus => ({
   state: 'READY',
@@ -38,5 +42,39 @@ describe('appliance-status', () => {
         actual: { exit_code: 1 },
       }),
     ).toBe('RECONCILING');
+  });
+
+  it('ignores stale runtime warnings for disabled models', () => {
+    const config = {
+      deployments: [
+        {
+          id: 'dep-new',
+          display_name: 'TheBloke/deepseek-coder-6.7B-instruct-GPTQ',
+          enabled: true,
+          source: { type: 'huggingface', repo_id: 'TheBloke/deepseek-coder-6.7B-instruct-GPTQ' },
+          status: 'reconciling',
+        },
+        {
+          id: 'dep-old',
+          display_name: 'casperhansen/llama-3-8b-instruct-awq',
+          enabled: false,
+          source: { type: 'huggingface', repo_id: 'casperhansen/llama-3-8b-instruct-awq' },
+          status: 'stopped',
+        },
+      ],
+    } as ApplianceConfig;
+
+    const status: ApplianceStatus = {
+      ...baseStatus(),
+      state: 'DEGRADED',
+      actual: {
+        current_model: 'casperhansen/llama-3-8b-instruct-awq',
+        log_snippet: 'GPU VRAM likely insufficient for casperhansen/llama-3-8b-instruct-awq',
+      },
+    };
+
+    expect(isStaleRuntimeWarning(status, config)).toBe(true);
+    expect(hasDegradedSignals(status, config)).toBe(false);
+    expect(effectiveApplianceState(status, config)).toBe('RECONCILING');
   });
 });
