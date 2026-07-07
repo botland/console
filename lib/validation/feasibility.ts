@@ -55,15 +55,23 @@ function gpuKey(nodeId: string, gpuIndex: number): string {
   return `${nodeId}:${gpuIndex}`;
 }
 
+function isDeploymentEnabled(dep: DeploymentConfig): boolean {
+  return dep.enabled === true;
+}
+
 function mergeEnabledDeployments(
   config: ApplianceConfig,
   deployment: DeploymentConfig,
 ): DeploymentConfig[] {
-  const existing = config.deployments.filter((item) => item.enabled && item.id !== deployment.id);
-  if (deployment.enabled) {
-    return [...existing, deployment];
+  const merged = new Map<string, DeploymentConfig>();
+  for (const item of config.deployments) {
+    if (!isDeploymentEnabled(item) || item.id === deployment.id) continue;
+    merged.set(item.id, item);
   }
-  return existing;
+  if (isDeploymentEnabled(deployment)) {
+    merged.set(deployment.id, deployment);
+  }
+  return [...merged.values()];
 }
 
 function validateCrossDeploymentGpuBudget(
@@ -73,14 +81,16 @@ function validateCrossDeploymentGpuBudget(
   errors: string[],
   warnings: string[],
 ): void {
-  if (deployments.length <= 1) return;
+  const enabledDeployments = deployments.filter(isDeploymentEnabled);
+  if (enabledDeployments.length <= 1) return;
 
   const inventory = buildInventory(config);
   const cluster = orchestration ?? config.cluster;
   const budget = new Map<string, number>();
+  const contributors = new Map<string, string[]>();
   let totalPeakGpus = 0;
 
-  for (const dep of deployments) {
+  for (const dep of enabledDeployments) {
     const util = gpuUtilization(dep);
     const instances = effectiveInstances(dep, inventory);
     totalPeakGpus += peakGpuDemand(dep, inventory);
@@ -93,6 +103,11 @@ function validateCrossDeploymentGpuBudget(
       for (const gpuIndex of target.gpu_indices) {
         const key = gpuKey(target.node_id, gpuIndex);
         budget.set(key, (budget.get(key) ?? 0) + util);
+        const names = contributors.get(key) ?? [];
+        const label = dep.display_name || dep.id;
+        if (!names.includes(label)) {
+          contributors.set(key, [...names, label]);
+        }
       }
     }
   }
@@ -102,9 +117,10 @@ function validateCrossDeploymentGpuBudget(
       const [nodeId, gpuIndex] = key.split(':');
       const node = config.nodes.find((item) => item.id === nodeId);
       const label = node ? `${node.hostname} GPU ${gpuIndex}` : `GPU ${gpuIndex} on ${nodeId}`;
+      const models = contributors.get(key)?.join(', ') ?? 'enabled models';
       errors.push(
-        `Combined GPU memory utilization on ${label} exceeds 100% (${Math.round(used * 100)}%). ` +
-          'Lower gpu utilization or choose different GPUs across deployments.',
+        `Combined GPU memory utilization on ${label} exceeds 100% (${Math.round(used * 100)}%) ` +
+          `across ${models}. Lower gpu utilization, reduce instances on the same GPU, or choose different GPUs.`,
       );
     } else if (used > 0.9) {
       warnings.push(

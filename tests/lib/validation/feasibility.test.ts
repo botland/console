@@ -354,6 +354,58 @@ describe('validateDeployment', () => {
     expect(result.errors.some((e) => e.includes('at peak'))).toBe(true);
   });
 
+  it('ignores disabled deployments when checking GPU utilization budget', () => {
+    const config = minimalConfig({
+      cluster: {
+        ...minimalConfig().cluster,
+        serving_mode: 'distributed',
+        compute_backend: 'federation',
+        federation_layout: 'diverse',
+      },
+      deployments: [
+        sampleDeployment({
+          id: 'dep-a',
+          display_name: 'casperhansen/llama-3-8b-instruct-awq',
+          enabled: false,
+          parallelism: {
+            context_length: 8192,
+            quantization: null,
+            instances: 1,
+            gpus_per_instance: 1,
+            nodes_per_instance: 1,
+            gpu_utilization: 0.85,
+            autoscaling: null,
+          },
+          placement: {
+            mode: 'manual',
+            targets: [{ node_id: 'node-1', gpu_indices: [0] }],
+          },
+        }),
+      ],
+    });
+    const depB = sampleDeployment({
+      id: 'dep-b',
+      display_name: 'meta-llama/Llama-3.1-8B-Instruct',
+      enabled: true,
+      parallelism: {
+        context_length: 8192,
+        quantization: null,
+        instances: 1,
+        gpus_per_instance: 1,
+        nodes_per_instance: 1,
+        gpu_utilization: 0.85,
+        autoscaling: null,
+      },
+      placement: {
+        mode: 'manual',
+        targets: [{ node_id: 'node-1', gpu_indices: [0] }],
+      },
+    });
+    const result = validateDeployment(depB, config);
+    expect(result.valid).toBe(true);
+    expect(result.errors.some((e) => e.includes('exceeds 100%'))).toBe(false);
+  });
+
   it('rejects combined GPU utilization above 100% across deployments', () => {
     const config = minimalConfig({
       cluster: {
