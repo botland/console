@@ -19,6 +19,18 @@ describe('vram budgeting', () => {
     expect(estimateWeightMb('casperhansen/llama-3-8b-instruct-awq')).toBeCloseTo(5489, -1);
   });
 
+  it('returns weight-only message when fp16 exceeds GPU before KV check', () => {
+    const msg = checkVramForModel(
+      'deepseek-ai/deepseek-coder-6.7b-instruct',
+      8192,
+      0.85,
+      RTX_3070_TI_MB,
+      'NVIDIA GeForce RTX 3070 Ti',
+    );
+    expect(msg).toContain('Estimated model weights (~13.4 GB)');
+    expect(msg).not.toContain('KV cache');
+  });
+
   it('rejects AWQ 8B at context 8192 on 8 GB GPU with 0.85 util', () => {
     expect(
       vramFitsOnDevices(

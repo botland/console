@@ -188,7 +188,7 @@ describe('validateDeployment', () => {
       sampleDeployment({ source: { type: 'huggingface', repo_id: 'org/Qwen-32b' } }),
       config,
     );
-    expect(result32.warnings.some((w) => w.includes('Estimated model weights'))).toBe(true);
+    expect(result32.errors.some((e) => e.includes('Estimated model weights'))).toBe(true);
 
     const result8 = validateDeployment(
       sampleDeployment({ source: { type: 'huggingface', repo_id: 'meta-llama/Llama-8b' } }),
@@ -224,7 +224,7 @@ describe('validateDeployment', () => {
       },
     });
     const result = validateDeployment(dep, config);
-    expect(result.warnings.some((w) => w.includes('Estimated model weights'))).toBe(true);
+    expect(result.errors.some((e) => e.includes('Estimated model weights'))).toBe(true);
   });
 
   it('warns when estimated VRAM may not fit', () => {
@@ -254,7 +254,7 @@ describe('validateDeployment', () => {
       },
     });
     const result = validateDeployment(dep, config);
-    expect(result.warnings.some((w) => w.includes('Estimated model weights'))).toBe(true);
+    expect(result.errors.some((e) => e.includes('Estimated model weights'))).toBe(true);
   });
 
   it('requires placement targets when deployment placement mode is manual', () => {
@@ -545,7 +545,7 @@ describe('validateDeployment', () => {
     expect(result.warnings.some((w) => w.includes('Estimated model weights'))).toBe(false);
   });
 
-  it('warns when fp16 weights exceed GPU VRAM', () => {
+  it('rejects fp16 weights that exceed GPU VRAM with a single error', () => {
     const config = minimalConfig({
       nodes: [
         {
@@ -568,6 +568,61 @@ describe('validateDeployment', () => {
       },
     });
     const result = validateDeployment(dep, config);
-    expect(result.warnings.some((w) => w.includes('Estimated model weights (~16 GB)'))).toBe(true);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes('Estimated model weights (~16.0 GB)'))).toBe(true);
+    expect(result.errors.some((e) => e.includes('KV cache'))).toBe(false);
+  });
+
+  it('rejects deepseek 6.7b fp16 on 8 GB without duplicate KV message', () => {
+    const config = minimalConfig({
+      nodes: [
+        {
+          id: 'node-head',
+          hostname: 'sak',
+          ip: '192.168.1.143',
+          is_head: true,
+          gpus_reserved_for_system: 0,
+          labels: [],
+          status: 'online',
+          gpus: [],
+        },
+        {
+          id: 'node-worker',
+          hostname: 'kas',
+          ip: '192.168.1.144',
+          is_head: false,
+          gpus_reserved_for_system: 0,
+          labels: [],
+          status: 'online',
+          gpus: [{ index: 0, name: 'NVIDIA GeForce RTX 3070 Ti', vram_mb: 8 * 1024 }],
+        },
+      ],
+      cluster: {
+        ...minimalConfig().cluster,
+        head_node_id: 'node-head',
+        head_gpu: false,
+      },
+    });
+    const dep = sampleDeployment({
+      source: { type: 'huggingface', repo_id: 'deepseek-ai/deepseek-coder-6.7b-instruct' },
+      parallelism: {
+        context_length: 8192,
+        quantization: null,
+        instances: 1,
+        gpus_per_instance: 1,
+        nodes_per_instance: 1,
+        gpu_utilization: 0.85,
+        autoscaling: null,
+      },
+      placement: {
+        mode: 'manual',
+        targets: [{ node_id: 'node-worker', gpu_indices: [0] }],
+      },
+    });
+    const result = validateDeployment(dep, config);
+    expect(result.valid).toBe(false);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toContain('Estimated model weights (~13.4 GB)');
+    expect(result.errors[0]).toContain('quantized');
   });
 });

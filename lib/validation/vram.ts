@@ -77,35 +77,56 @@ export function capContextLength(
   return 512;
 }
 
+/** totalVramMb is the combined VRAM budget for the instance (sum of selected GPUs). */
+export function weightsExceedGpuVram(
+  modelId: string,
+  totalVramMb: number,
+  _gpusPerInstance = 1,
+): boolean {
+  const weightGb = estimateWeightGb(modelId);
+  if (weightGb === null || totalVramMb <= 0) return false;
+  const budgetGb = totalVramMb / 1024;
+  return weightGb > budgetGb;
+}
+
 export function checkVramForModel(
   modelId: string,
   contextLength: number,
   gpuUtilization: number,
   totalVramMb: number,
   gpuName: string,
+  gpusPerInstance = 1,
 ): string | null {
   const weightGb = estimateWeightGb(modelId);
   if (weightGb === null || totalVramMb <= 0) return null;
+
+  const totalGb = totalVramMb / 1024;
+  const quantLabel = isQuantizedModelId(modelId) ? ' (quantized)' : '';
+
+  if (weightsExceedGpuVram(modelId, totalVramMb, gpusPerInstance)) {
+    const quantHint = isQuantizedModelId(modelId)
+      ? ' Try a smaller model or more GPUs per instance.'
+      : ' Use a quantized variant (AWQ/GPTQ), a smaller model, or more GPUs per instance.';
+    return (
+      `Estimated model weights (~${weightGb.toFixed(1)} GB${quantLabel}) exceed ${gpuName} ` +
+      `(${Math.round(totalGb)} GB).${quantHint}`
+    );
+  }
 
   if (vramFitsOnDevices(modelId, contextLength, gpuUtilization, totalVramMb)) {
     return null;
   }
 
-  const totalGb = totalVramMb / 1024;
   const kvNeededGb = kvCacheGb(modelId, contextLength);
   const kvBudgetGb =
     totalGb * gpuUtilization - weightGb - activationOverheadGb(modelId);
   const capped = capContextLength(modelId, contextLength, gpuUtilization, totalVramMb);
-  const quantHint = isQuantizedModelId(modelId)
-    ? ''
-    : ' Use a quantized variant (AWQ/GPTQ) or a smaller model.';
   const contextHint =
     capped < contextLength ? ` Try context_length=${capped} or lower on this GPU.` : '';
   return (
     `GPU VRAM likely insufficient for ${modelId} at context ${contextLength}: ` +
     `~${kvNeededGb.toFixed(1)} GB KV cache needed, ~${Math.max(kvBudgetGb, 0).toFixed(1)} GB KV budget ` +
-    `on ${gpuName}.${contextHint} ` +
-    `Try gpu_utilization>=0.95 or lower context_length.${quantHint}`
+    `on ${gpuName}.${contextHint} Try gpu_utilization>=0.95 or lower context_length.`
   );
 }
 
