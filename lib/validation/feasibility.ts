@@ -10,17 +10,35 @@ import type { ApplianceConfig, DeploymentConfig, OrchestrationConfig, Validation
 import { effectiveInstances, peakGpuDemand } from '@/lib/parallelism';
 
 import { buildInventory } from './inventory';
+import {
+  checkVramForModel,
+  estimateWeightGb,
+  estimateWeightMb,
+  estimateWeightMbHeuristic,
+  isQuantizedModelId,
+  modelIdFromDeployment,
+} from './vram';
 
 const DEFAULT_GPU_UTILIZATION = 0.85;
 
-function estimateModelVramMb(deployment: DeploymentConfig): number {
-  if (deployment.source.type === 'local_path') return 16_000;
-  const repo = deployment.source.repo_id.toLowerCase();
-  if (repo.includes('70b')) return 140_000;
-  if (repo.includes('32b')) return 64_000;
-  if (repo.includes('13b')) return 26_000;
-  if (repo.includes('8b') || repo.includes('7b')) return 16_000;
-  return 24_000;
+function deploymentModelId(deployment: DeploymentConfig): string | null {
+  return modelIdFromDeployment(deployment.source);
+}
+
+function isQuantizedDeployment(deployment: DeploymentConfig): boolean {
+  if (deployment.source.type === 'huggingface') {
+    const repo = deployment.source.repo_id.toLowerCase();
+    if (isQuantizedModelId(repo)) return true;
+  }
+  const tag = deployment.parallelism.quantization?.toLowerCase();
+  return tag === 'awq' || tag === 'gptq' || tag === 'fp8' || tag === 'gguf';
+}
+
+function estimatedWeightMbForDeployment(deployment: DeploymentConfig): number | null {
+  const modelId = deploymentModelId(deployment);
+  if (!modelId) return null;
+  if (deployment.source.type === 'local_path') return null;
+  return estimateWeightMb(modelId) ?? estimateWeightMbHeuristic(modelId);
 }
 
 function minVramOnNode(config: ApplianceConfig, gpusNeeded: number): number {
@@ -37,14 +55,6 @@ function minVramOnNode(config: ApplianceConfig, gpusNeeded: number): number {
   return Math.max(0, ...perNodeVrams);
 }
 
-function isQuantizedModel(deployment: DeploymentConfig): boolean {
-  if (deployment.source.type !== 'huggingface') return false;
-  const repo = deployment.source.repo_id.toLowerCase();
-  return ['awq', 'gptq', 'fp8', 'marlin', 'quant', 'gguf', 'bnb'].some((tag) =>
-    repo.includes(tag),
-  );
-}
-
 function gpuUtilization(deployment: DeploymentConfig): number {
   const raw = deployment.parallelism.gpu_utilization;
   if (typeof raw === 'number' && raw > 0 && raw <= 1) return raw;
@@ -53,6 +63,149 @@ function gpuUtilization(deployment: DeploymentConfig): number {
 
 function gpuKey(nodeId: string, gpuIndex: number): string {
   return `${nodeId}:${gpuIndex}`;
+}
+
+function totalVramMbForGpuIndices(
+  node: ApplianceConfig['nodes'][number],
+  gpuIndices: number[],
+): { totalVramMb: number; gpuName: string } {
+  let totalVramMb = 0;
+  const names: string[] = [];
+  for (const index of gpuIndices) {
+    const gpu = node.gpus.find((item) => item.index === index);
+    if (gpu) {
+      totalVramMb += gpu.vram_mb;
+      names.push(gpu.name);
+    }
+  }
+  return {
+    totalVramMb,
+    gpuName: names[0] ?? `GPU on ${node.hostname}`,
+  };
+}
+
+function smallestOnlineGpuVram(
+  config: ApplianceConfig,
+  gpusPerInstance: number,
+): { totalVramMb: number; gpuName: string; nodeHostname: string } | null {
+  let smallest: { totalVramMb: number; gpuName: string; nodeHostname: string } | null = null;
+  for (const node of config.nodes) {
+    if (node.status !== 'online') continue;
+    const available = node.gpus
+      .slice(node.gpus_reserved_for_system)
+      .map((gpu) => ({ index: gpu.index, vram_mb: gpu.vram_mb, name: gpu.name }))
+      .sort((a, b) => a.vram_mb - b.vram_mb);
+    if (available.length < gpusPerInstance) continue;
+    const selected = available.slice(0, gpusPerInstance);
+    const totalVramMb = selected.reduce((sum, gpu) => sum + gpu.vram_mb, 0);
+    if (!smallest || totalVramMb < smallest.totalVramMb) {
+      smallest = {
+        totalVramMb,
+        gpuName: selected[0]?.name ?? 'GPU',
+        nodeHostname: node.hostname,
+      };
+    }
+  }
+  return smallest;
+}
+
+function validateWeightFitsTargetGpus(
+  deployment: DeploymentConfig,
+  config: ApplianceConfig,
+  warnings: string[],
+): void {
+  const weightMb = estimatedWeightMbForDeployment(deployment);
+  if (weightMb === null) return;
+
+  const weightGb = Math.round((estimateWeightGb(deploymentModelId(deployment)!) ?? weightMb / 1024) * 10) / 10;
+  const { gpus_per_instance } = deployment.parallelism;
+  const targets = deployment.placement?.targets ?? [];
+  const quantLabel = isQuantizedDeployment(deployment) ? ' (quantized)' : '';
+
+  const checkGpu = (totalVramMb: number, label: string) => {
+    const vramGb = Math.round(totalVramMb / 1024);
+    const perGpuWeightMb = Math.ceil(weightMb / Math.max(1, gpus_per_instance));
+    if (perGpuWeightMb > totalVramMb) {
+      warnings.push(
+        `Estimated model weights (~${weightGb} GB${quantLabel}) exceed ${label} (${vramGb} GB). ` +
+          `Use a quantized variant, a smaller model, or more GPUs per instance.`,
+      );
+    }
+  };
+
+  if (targets.length > 0) {
+    for (let i = 0; i < targets.length; i += 1) {
+      const target = targets[i];
+      const node = config.nodes.find((item) => item.id === target.node_id);
+      if (!node) continue;
+      const { totalVramMb } = totalVramMbForGpuIndices(node, target.gpu_indices);
+      if (totalVramMb > 0) {
+        checkGpu(totalVramMb, `${node.hostname} instance ${i + 1}`);
+      }
+    }
+    return;
+  }
+
+  const minVram = minVramOnNode(config, gpus_per_instance);
+  if (minVram > 0) {
+    checkGpu(minVram * gpus_per_instance, `${gpus_per_instance} GPU(s) with ${Math.round(minVram / 1024)} GB each`);
+  }
+}
+
+function validateKvCacheBudget(
+  deployment: DeploymentConfig,
+  config: ApplianceConfig,
+  errors: string[],
+): void {
+  const modelId = deploymentModelId(deployment);
+  if (!modelId) return;
+
+  const contextLength = deployment.parallelism.context_length;
+  const util = gpuUtilization(deployment);
+  const { gpus_per_instance } = deployment.parallelism;
+  const targets = deployment.placement?.targets ?? [];
+
+  const checks: Array<{ totalVramMb: number; gpuName: string; label: string }> = [];
+
+  if (targets.length > 0) {
+    for (let i = 0; i < targets.length; i += 1) {
+      const target = targets[i];
+      const node = config.nodes.find((item) => item.id === target.node_id);
+      if (!node) continue;
+      const { totalVramMb, gpuName } = totalVramMbForGpuIndices(node, target.gpu_indices);
+      checks.push({
+        totalVramMb,
+        gpuName,
+        label: `${node.hostname} instance ${i + 1}`,
+      });
+    }
+  } else {
+    const smallest = smallestOnlineGpuVram(config, gpus_per_instance);
+    if (smallest) {
+      checks.push({
+        totalVramMb: smallest.totalVramMb,
+        gpuName: smallest.gpuName,
+        label: smallest.nodeHostname,
+      });
+    }
+  }
+
+  for (const check of checks) {
+    const message = checkVramForModel(
+      modelId,
+      contextLength,
+      util,
+      check.totalVramMb,
+      check.gpuName,
+    );
+    if (message) {
+      errors.push(
+        targets.length > 0
+          ? `${check.label}: ${message}`
+          : message,
+      );
+    }
+  }
 }
 
 function isDeploymentEnabled(dep: DeploymentConfig): boolean {
@@ -206,14 +359,9 @@ export function validateDeployment(
     }
   }
 
-  const vramEstimate = estimateModelVramMb(deployment);
-  const vramPerGpu = Math.ceil(vramEstimate / Math.max(1, gpus_per_instance));
-  const minVram = minVramOnNode(config, gpus_per_instance);
-  if (minVram > 0 && vramPerGpu > minVram && !isQuantizedModel(deployment)) {
-    warnings.push(
-      `Estimated model size (~${Math.round(vramEstimate / 1024)} GB) may not fit in ${gpus_per_instance} GPU(s) with ${Math.round(minVram / 1024)} GB each.`,
-    );
-  }
+  validateWeightFitsTargetGpus(deployment, config, warnings);
+
+  validateKvCacheBudget(deployment, config, errors);
 
   const formMode = resolveDeploymentFormMode(orchestration ?? config.cluster, deployment);
   if (formMode.placementRequired) {

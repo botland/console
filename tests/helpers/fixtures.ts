@@ -22,11 +22,12 @@ export function sampleDeployment(overrides?: Partial<DeploymentConfig>): Deploym
     source: { type: 'huggingface', repo_id: 'meta-llama/Llama-3.1-8B-Instruct' },
     user_intent: { performance_goal: 'balanced', scale: 'medium' },
     parallelism: {
-      context_length: 8192,
+      context_length: 4096,
       quantization: null,
       instances: 1,
       gpus_per_instance: 1,
       nodes_per_instance: 1,
+      gpu_utilization: 0.85,
       autoscaling: null,
     },
     status: 'reconciling',

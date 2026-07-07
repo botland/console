@@ -32,7 +32,7 @@ export async function getConfig(): Promise<ApplianceConfig> {
 
 export async function getOrchestration(): Promise<ClusterConfig> {
   if (isInferedgeRuntime()) return inferedge.getOrchestration();
-  return mock.getConfig().cluster;
+  return mock.withOrchestrationExtras(mock.getConfig().cluster);
 }
 
 /** @deprecated Use getOrchestration */
@@ -49,11 +49,7 @@ export async function putOrchestration(cluster: ClusterConfig): Promise<Orchestr
     return inferedge.updateOrchestration(cluster);
   }
   const config = mock.updateCluster(cluster);
-  return {
-    ...config.cluster,
-    federation_auto_placement: true,
-    reconcile_seq: null,
-  };
+  return mock.orchestrationPutResponse(config.cluster);
 }
 
 export async function updateOrchestration(partial: Partial<ClusterConfig>): Promise<ApplianceConfig> {

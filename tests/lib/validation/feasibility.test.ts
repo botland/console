@@ -7,16 +7,7 @@ import { validateDeployment } from '@/lib/validation/feasibility';
 describe('validateDeployment', () => {
   it('accepts a feasible deployment', () => {
     const config = minimalConfig();
-    const dep = sampleDeployment({
-      parallelism: {
-        context_length: 8192,
-        quantization: null,
-        instances: 1,
-        gpus_per_instance: 1,
-        nodes_per_instance: 1,
-        autoscaling: null,
-      },
-    });
+    const dep = sampleDeployment();
     const result = validateDeployment(dep, config);
     expect(result.valid).toBe(true);
     expect(result.errors).toHaveLength(0);
@@ -197,7 +188,7 @@ describe('validateDeployment', () => {
       sampleDeployment({ source: { type: 'huggingface', repo_id: 'org/Qwen-32b' } }),
       config,
     );
-    expect(result32.warnings.some((w) => w.includes('Estimated model size'))).toBe(true);
+    expect(result32.warnings.some((w) => w.includes('Estimated model weights'))).toBe(true);
 
     const result8 = validateDeployment(
       sampleDeployment({ source: { type: 'huggingface', repo_id: 'meta-llama/Llama-8b' } }),
@@ -233,7 +224,7 @@ describe('validateDeployment', () => {
       },
     });
     const result = validateDeployment(dep, config);
-    expect(result.warnings.some((w) => w.includes('Estimated model size'))).toBe(true);
+    expect(result.warnings.some((w) => w.includes('Estimated model weights'))).toBe(true);
   });
 
   it('warns when estimated VRAM may not fit', () => {
@@ -263,7 +254,7 @@ describe('validateDeployment', () => {
       },
     });
     const result = validateDeployment(dep, config);
-    expect(result.warnings.some((w) => w.includes('Estimated model size'))).toBe(true);
+    expect(result.warnings.some((w) => w.includes('Estimated model weights'))).toBe(true);
   });
 
   it('requires placement targets when deployment placement mode is manual', () => {
@@ -293,11 +284,12 @@ describe('validateDeployment', () => {
     const dep = sampleDeployment({
       placement: {
         mode: 'manual',
-        targets: [{ node_id: 'node-1', gpu_indices: [0] }],
+        targets: [{ node_id: 'node-2', gpu_indices: [0] }],
       },
     });
     const result = validateDeployment(dep, config);
     expect(result.valid).toBe(true);
+    expect(result.errors.some((e) => e.includes('VRAM likely insufficient'))).toBe(false);
   });
 
   it('skips placement validation when deployment placement mode is auto', () => {
@@ -378,7 +370,7 @@ describe('validateDeployment', () => {
           },
           placement: {
             mode: 'manual',
-            targets: [{ node_id: 'node-1', gpu_indices: [0] }],
+            targets: [{ node_id: 'node-2', gpu_indices: [0] }],
           },
         }),
       ],
@@ -388,7 +380,7 @@ describe('validateDeployment', () => {
       display_name: 'meta-llama/Llama-3.1-8B-Instruct',
       enabled: true,
       parallelism: {
-        context_length: 8192,
+        context_length: 4096,
         quantization: null,
         instances: 1,
         gpus_per_instance: 1,
@@ -398,12 +390,13 @@ describe('validateDeployment', () => {
       },
       placement: {
         mode: 'manual',
-        targets: [{ node_id: 'node-1', gpu_indices: [0] }],
+        targets: [{ node_id: 'node-2', gpu_indices: [0] }],
       },
     });
     const result = validateDeployment(depB, config);
     expect(result.valid).toBe(true);
     expect(result.errors.some((e) => e.includes('exceeds 100%'))).toBe(false);
+    expect(result.errors.some((e) => e.includes('VRAM likely insufficient'))).toBe(false);
   });
 
   it('rejects combined GPU utilization above 100% across deployments', () => {
@@ -429,7 +422,7 @@ describe('validateDeployment', () => {
           },
           placement: {
             mode: 'manual',
-            targets: [{ node_id: 'node-1', gpu_indices: [0] }],
+            targets: [{ node_id: 'node-2', gpu_indices: [0] }],
           },
         }),
       ],
@@ -448,7 +441,7 @@ describe('validateDeployment', () => {
       },
       placement: {
         mode: 'manual',
-        targets: [{ node_id: 'node-1', gpu_indices: [0] }],
+        targets: [{ node_id: 'node-2', gpu_indices: [0] }],
       },
     });
     const result = validateDeployment(depB, config);
@@ -456,19 +449,125 @@ describe('validateDeployment', () => {
     expect(result.errors.some((e) => e.includes('exceeds 100%'))).toBe(true);
   });
 
-  it('skips VRAM warning for quantized repo ids', () => {
+  it('rejects AWQ deployment when KV cache exceeds 8 GB GPU budget', () => {
     const config = minimalConfig({
       nodes: [
         {
-          ...minimalConfig().nodes[0],
-          gpus: [{ index: 0, name: 'Small GPU', vram_mb: 8192 }],
+          id: 'node-head',
+          hostname: 'sak',
+          ip: '192.168.1.143',
+          is_head: true,
+          gpus_reserved_for_system: 0,
+          labels: [],
+          status: 'online',
+          gpus: [],
+        },
+        {
+          id: 'node-worker',
+          hostname: 'kas',
+          ip: '192.168.1.144',
+          is_head: false,
+          gpus_reserved_for_system: 0,
+          labels: [],
+          status: 'online',
+          gpus: [
+            {
+              index: 0,
+              name: 'NVIDIA GeForce RTX 3070 Ti',
+              vram_mb: 8 * 1024,
+            },
+          ],
+        },
+      ],
+      cluster: {
+        ...minimalConfig().cluster,
+        serving_mode: 'distributed',
+        compute_backend: 'federation',
+        federation_layout: 'diverse',
+        head_node_id: 'node-head',
+        head_gpu: false,
+      },
+    });
+    const dep = sampleDeployment({
+      source: { type: 'huggingface', repo_id: 'casperhansen/llama-3-8b-instruct-awq' },
+      parallelism: {
+        context_length: 8192,
+        quantization: 'awq',
+        instances: 1,
+        gpus_per_instance: 1,
+        nodes_per_instance: 1,
+        gpu_utilization: 0.85,
+        autoscaling: null,
+      },
+      placement: {
+        mode: 'manual',
+        targets: [{ node_id: 'node-worker', gpu_indices: [0] }],
+      },
+    });
+    const result = validateDeployment(dep, config, config.cluster);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes('VRAM likely insufficient'))).toBe(true);
+  });
+
+  it('uses quantized weight estimate on AWQ models (not fp16 16 GB)', () => {
+    const config = minimalConfig({
+      nodes: [
+        {
+          id: 'node-worker',
+          hostname: 'kas',
+          ip: '192.168.1.144',
+          is_head: false,
+          gpus_reserved_for_system: 0,
+          labels: [],
+          status: 'online',
+          gpus: [{ index: 0, name: 'NVIDIA GeForce RTX 3070 Ti', vram_mb: 8 * 1024 }],
         },
       ],
     });
     const dep = sampleDeployment({
       source: { type: 'huggingface', repo_id: 'casperhansen/llama-3-8b-instruct-awq' },
+      parallelism: {
+        context_length: 4096,
+        quantization: 'awq',
+        instances: 1,
+        gpus_per_instance: 1,
+        nodes_per_instance: 1,
+        gpu_utilization: 0.85,
+        autoscaling: null,
+      },
+      placement: {
+        mode: 'manual',
+        targets: [{ node_id: 'node-worker', gpu_indices: [0] }],
+      },
     });
     const result = validateDeployment(dep, config);
-    expect(result.warnings.some((w) => w.includes('Estimated model size'))).toBe(false);
+    expect(result.warnings.some((w) => w.includes('16 GB'))).toBe(false);
+    expect(result.warnings.some((w) => w.includes('Estimated model weights'))).toBe(false);
+  });
+
+  it('warns when fp16 weights exceed GPU VRAM', () => {
+    const config = minimalConfig({
+      nodes: [
+        {
+          id: 'node-worker',
+          hostname: 'kas',
+          ip: '192.168.1.144',
+          is_head: false,
+          gpus_reserved_for_system: 0,
+          labels: [],
+          status: 'online',
+          gpus: [{ index: 0, name: 'NVIDIA GeForce RTX 3070 Ti', vram_mb: 8 * 1024 }],
+        },
+      ],
+    });
+    const dep = sampleDeployment({
+      source: { type: 'huggingface', repo_id: 'meta-llama/Llama-3.1-8B-Instruct' },
+      placement: {
+        mode: 'manual',
+        targets: [{ node_id: 'node-worker', gpu_indices: [0] }],
+      },
+    });
+    const result = validateDeployment(dep, config);
+    expect(result.warnings.some((w) => w.includes('Estimated model weights (~16 GB)'))).toBe(true);
   });
 });
