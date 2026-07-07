@@ -8,6 +8,7 @@ import { ApplianceBadge } from '@/components/StatusBadge';
 import { Card, PageHeader } from '@/components/ui';
 import { effectiveApplianceState, hasDegradedSignals } from '@/lib/appliance-status';
 import { api, ApiError } from '@/lib/api';
+import { formatNodeLabelFromNode } from '@/lib/node-label';
 import type { ApplianceConfig, ApplianceStatus } from '@/lib/types';
 
 type OverviewData = ApplianceStatus & {
@@ -63,7 +64,9 @@ export default function OverviewPage() {
         title="Overview"
         description={
           config
-            ? `Appliance ${config.appliance_id} · Head: ${headNode?.hostname ?? 'unknown'}`
+            ? `Appliance ${config.appliance_id} · Head: ${
+                headNode ? formatNodeLabelFromNode(headNode) : 'unknown'
+              }`
             : `Head: ${status.head.head_ip || 'unknown'}`
         }
       />

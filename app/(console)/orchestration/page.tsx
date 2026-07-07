@@ -22,6 +22,7 @@ import {
   canDetachFromCluster,
   canEditOrchestrationTopology,
 } from '@/lib/console-capabilities';
+import { formatNodeLabelFromNode } from '@/lib/node-label';
 import type {
   ApplianceConfig,
   ComputeBackend,
@@ -178,7 +179,9 @@ export default function OrchestrationPage() {
         const result = await api.migrateHead(targetId);
         if (result.success) {
           setMigratePreview(
-            `Head is now ${to?.hostname} (${result.head.head_ip}). Open http://${result.head.head_ip}/ if this page becomes unreachable.`,
+            `Head is now ${formatNodeLabelFromNode(
+              to ?? { hostname: '', ip: result.head.head_ip },
+            )}. Open http://${result.head.head_ip}/ if this page becomes unreachable.`,
           );
           await reload();
         }
@@ -514,7 +517,7 @@ export default function OrchestrationPage() {
           <ConfirmDialog
             open={!!pendingHead}
             title="Migrate head node?"
-            message={`Head will move from ${config.nodes.find((n) => n.id === cluster.head_node_id)?.hostname ?? cluster.head_node_id} to ${config.nodes.find((n) => n.id === pendingHead)?.hostname ?? pendingHead}. ${enabledDeployments} deployment(s) will reschedule. Workers will reconnect to the new head.`}
+            message={`Head will move from ${formatNodeLabelFromNode(config.nodes.find((n) => n.id === cluster.head_node_id) ?? { hostname: cluster.head_node_id, ip: '' })} to ${formatNodeLabelFromNode(config.nodes.find((n) => n.id === pendingHead) ?? { hostname: pendingHead ?? '', ip: '' })}. ${enabledDeployments} deployment(s) will reschedule. Workers will reconnect to the new head.`}
             confirmLabel="Migrate head"
             danger
             onConfirm={confirmHeadMigration}

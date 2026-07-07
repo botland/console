@@ -16,7 +16,7 @@ const gpuSchema = z.object({
 
 const nodeSchema = z.object({
   id: z.string(),
-  hostname: z.string(),
+  hostname: z.string().min(1),
   ip: z.string(),
   is_head: z.boolean(),
   gpus_reserved_for_system: z.number().min(0),

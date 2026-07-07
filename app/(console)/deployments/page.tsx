@@ -13,6 +13,7 @@ import {
   canManageClusterDeployments,
   isDistributedWorker,
 } from '@/lib/console-capabilities';
+import { formatNodeLabelFromNode } from '@/lib/node-label';
 import type { DeploymentConfig, GatewayInfo, NodeConfig, OrchestrationConfig } from '@/lib/types';
 
 export default function DeploymentsPage() {
@@ -142,8 +143,14 @@ export default function DeploymentsPage() {
                 {dep.placement?.targets?.[0] && (
                   <>
                     {' '}
-                    · {dep.placement.targets[0].node_id} gpu
-                    {dep.placement.targets[0].gpu_indices.join(',')}
+                    ·{' '}
+                    {formatNodeLabelFromNode(
+                      nodes.find((n) => n.id === dep.placement!.targets[0].node_id) ?? {
+                        hostname: dep.placement.targets[0].node_id,
+                        ip: '',
+                      },
+                    )}{' '}
+                    gpu{dep.placement.targets[0].gpu_indices.join(',')}
                   </>
                 )}
               </div>

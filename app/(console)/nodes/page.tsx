@@ -16,6 +16,7 @@ import {
   canMigrateHead,
   isStandalone,
 } from '@/lib/console-capabilities';
+import { formatNodeLabelFromNode } from '@/lib/node-label';
 import { nodeConsoleUrl } from '@/lib/node-console';
 import type { ClusterConfig, GatewayInfo, NodeConfig } from '@/lib/types';
 
@@ -124,6 +125,11 @@ export default function NodesPage() {
 
   const selfNode = nodes.find((n) => n.id === localNodeId);
 
+  const nodeLabel = (id: string) => {
+    const n = nodes.find((item) => item.id === id);
+    return n ? formatNodeLabelFromNode(n) : id;
+  };
+
   return (
     <>
       <PageHeader
@@ -187,7 +193,7 @@ export default function NodesPage() {
                 <div>
                   <div className="flex items-center gap-3 flex-wrap">
                     <span className="font-display font-semibold text-slate-100">
-                      {node.hostname}
+                      {formatNodeLabelFromNode(node)}
                     </span>
                     <NodeBadge status={node.status} />
                     {node.agent && <AgentPhaseBadge phase={node.agent.agent_phase} />}
@@ -202,9 +208,6 @@ export default function NodesPage() {
                       </span>
                     )}
                   </div>
-                  <div className="mt-1 text-sm text-slate-400">
-                    {node.id} · {node.ip}
-                  </div>
                   <div className="mt-1 text-xs text-slate-500">
                     {node.gpus.length} GPU(s)
                     {node.labels.length > 0 && ` · ${node.labels.join(', ')}`}
@@ -212,8 +215,8 @@ export default function NodesPage() {
                   </div>
                   {headMismatch && (
                     <p className="mt-1 text-xs text-amber-400">
-                      Agent targets {node.agent!.head_target_node_id}, cluster coordinator is{' '}
-                      {cluster!.head_node_id}
+                      Agent targets {nodeLabel(node.agent!.head_target_node_id)}, cluster
+                      coordinator is {nodeLabel(cluster!.head_node_id)}
                     </p>
                   )}
                 </div>
@@ -332,7 +335,7 @@ export default function NodesPage() {
       <ConfirmDialog
         open={!!headCandidate}
         title="Migrate head to this node?"
-        message={`The control plane will move to this node. ${enabledDeployments} deployment(s) will reschedule. All workers will reconnect to the new head.`}
+        message={`The control plane will move to ${headCandidate ? nodeLabel(headCandidate) : 'this node'}. ${enabledDeployments} deployment(s) will reschedule. All workers will reconnect to the new head.`}
         confirmLabel="Migrate head"
         danger
         onConfirm={confirmSetHead}
@@ -344,7 +347,7 @@ export default function NodesPage() {
         title="Open another console?"
         message={
           consoleTarget
-            ? `You will open the console for ${consoleTarget.hostname} (${consoleTarget.ip}) in a new tab. Cluster-wide changes belong on the coordinator console.`
+            ? `You will open the console for ${formatNodeLabelFromNode(consoleTarget)} in a new tab. Cluster-wide changes belong on the coordinator console.`
             : ''
         }
         confirmLabel="Open console"
