@@ -18,7 +18,8 @@ export function paramBillions(modelId: string): number | null {
 export function estimateWeightGb(modelId: string): number | null {
   const paramB = paramBillions(modelId);
   if (paramB === null) return null;
-  const multiplier = isQuantizedModelId(modelId) ? 0.67 : 2.0;
+  const lower = modelId.toLowerCase();
+  const multiplier = lower.includes('gptq') ? 0.5 : isQuantizedModelId(modelId) ? 0.67 : 2.0;
   return paramB * multiplier;
 }
 
