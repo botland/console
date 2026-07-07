@@ -60,10 +60,19 @@ export default function SystemPage() {
     load();
   }, [load]);
 
-  const identityChanged =
+  const hostnameChanged =
     identity &&
     identityBaseline &&
-    (identity.hostname !== identityBaseline.hostname || identity.ip !== identityBaseline.ip);
+    identity.hostname !== identityBaseline.hostname;
+
+  const ipChanged =
+    identity && identityBaseline && identity.ip !== identityBaseline.ip;
+
+  const networkChanged =
+    system &&
+    draft &&
+    (draft.network.gateway !== system.network.gateway ||
+      draft.network.dns.join(',') !== system.network.dns.join(','));
 
   const save = async () => {
     if (!draft || !identity) return;
@@ -73,10 +82,10 @@ export default function SystemPage() {
     }
     setSaveError(null);
     try {
-      if (identityChanged && localNodeId) {
+      if ((hostnameChanged || ipChanged) && localNodeId) {
         await api.updateNode(localNodeId, {
-          hostname: identity.hostname.trim(),
-          ip: identity.ip.trim(),
+          ...(hostnameChanged ? { hostname: identity.hostname.trim() } : {}),
+          ...(ipChanged ? { ip: identity.ip.trim() } : {}),
         });
         setIdentityBaseline(identity);
       }
@@ -87,6 +96,8 @@ export default function SystemPage() {
       setSaveError(e instanceof ApiError ? e.message : 'Failed to save system settings');
     }
   };
+
+  const hasChanges = hostnameChanged || ipChanged || networkChanged;
 
   return (
     <PageState loading={loading} error={error} onRetry={load}>
@@ -105,19 +116,26 @@ export default function SystemPage() {
             <Card className="space-y-4 lg:col-span-2">
               <h2 className="font-display font-semibold text-slate-100">This appliance</h2>
               <p className="text-sm text-slate-400">
-                {formatNodeLabel(identity.hostname, identity.ip)} — edit hostname and IP here on
-                each appliance. Changes apply to the host network stack.
+                Currently {formatNodeLabel(identity.hostname, identity.ip)}. Hostname identifies
+                this machine in the cluster.
               </p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl">
-                <div>
-                  <Label>Hostname</Label>
-                  <Input
-                    value={identity.hostname}
-                    onChange={(e) =>
-                      setIdentity({ ...identity, hostname: e.target.value })
-                    }
-                  />
-                </div>
+              <div className="max-w-md">
+                <Label>Hostname</Label>
+                <Input
+                  value={identity.hostname}
+                  onChange={(e) =>
+                    setIdentity({ ...identity, hostname: e.target.value })
+                  }
+                />
+              </div>
+            </Card>
+
+            <Card className="space-y-4 lg:col-span-2">
+              <h2 className="font-display font-semibold text-slate-100">Network</h2>
+              <p className="text-sm text-slate-400">
+                IP, gateway, and DNS apply to the host network stack on this appliance.
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <Label>IP address</Label>
                   <Input
@@ -125,37 +143,33 @@ export default function SystemPage() {
                     onChange={(e) => setIdentity({ ...identity, ip: e.target.value })}
                   />
                 </div>
-              </div>
-            </Card>
-
-            <Card className="space-y-4">
-              <h2 className="font-display font-semibold text-slate-100">Network</h2>
-              <div>
-                <Label>Gateway</Label>
-                <Input
-                  value={draft.network.gateway}
-                  onChange={(e) =>
-                    setDraft({
-                      ...draft,
-                      network: { ...draft.network, gateway: e.target.value },
-                    })
-                  }
-                />
-              </div>
-              <div>
-                <Label>DNS servers (comma-separated)</Label>
-                <Input
-                  value={draft.network.dns.join(', ')}
-                  onChange={(e) =>
-                    setDraft({
-                      ...draft,
-                      network: {
-                        ...draft.network,
-                        dns: e.target.value.split(',').map((s) => s.trim()),
-                      },
-                    })
-                  }
-                />
+                <div>
+                  <Label>Gateway</Label>
+                  <Input
+                    value={draft.network.gateway}
+                    onChange={(e) =>
+                      setDraft({
+                        ...draft,
+                        network: { ...draft.network, gateway: e.target.value },
+                      })
+                    }
+                  />
+                </div>
+                <div>
+                  <Label>DNS servers (comma-separated)</Label>
+                  <Input
+                    value={draft.network.dns.join(', ')}
+                    onChange={(e) =>
+                      setDraft({
+                        ...draft,
+                        network: {
+                          ...draft.network,
+                          dns: e.target.value.split(',').map((s) => s.trim()),
+                        },
+                      })
+                    }
+                  />
+                </div>
               </div>
             </Card>
 
@@ -186,7 +200,9 @@ export default function SystemPage() {
 
           <div className="mt-6 space-y-2">
             {saveError && <p className="text-sm text-amber-400">{saveError}</p>}
-            <Button onClick={() => void save()}>Apply system settings</Button>
+            <Button onClick={() => void save()} disabled={!hasChanges}>
+              Apply system settings
+            </Button>
           </div>
         </>
       )}
