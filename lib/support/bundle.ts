@@ -15,8 +15,10 @@ import { scrubSecrets, truncateLogTail } from '@/lib/support/redact';
 
 const SUPPORT_CLIENT_VERSION = '1.0.0';
 
+/** Git SHA or tag stamped at image build time — never use npm package version. */
 function consoleVersion(): string {
-  return process.env.APPLIANCE_CONSOLE_VERSION ?? process.env.npm_package_version ?? 'dev';
+  const stamped = process.env.APPLIANCE_CONSOLE_VERSION?.trim();
+  return stamped || 'dev';
 }
 
 export async function buildDiagnosticBundle(userNote = ''): Promise<DiagnosticBundle> {

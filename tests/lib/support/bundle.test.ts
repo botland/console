@@ -21,4 +21,16 @@ describe('buildDiagnosticBundle', () => {
     expect(bundle.attachments?.host).toBeTruthy();
     expect(bundle.attachments?.container_logs_tail).toBeTruthy();
   });
+
+  it('uses APPLIANCE_CONSOLE_VERSION stamp when set', async () => {
+    vi.stubEnv('APPLIANCE_CONSOLE_VERSION', 'abc123def456');
+    const bundle = await buildDiagnosticBundle();
+    expect(bundle.software.console_version).toBe('abc123def456');
+  });
+
+  it('falls back to dev when console version is not stamped', async () => {
+    vi.stubEnv('APPLIANCE_CONSOLE_VERSION', '');
+    const bundle = await buildDiagnosticBundle();
+    expect(bundle.software.console_version).toBe('dev');
+  });
 });
