@@ -8,6 +8,7 @@ import { PageError, PageLoading } from '@/components/PageState';
 import { AgentPhaseBadge, NodeBadge } from '@/components/StatusBadge';
 import { Button, Card, Input, Label, PageHeader } from '@/components/ui';
 import { api, ApiError } from '@/lib/api';
+import { useApplianceStatus } from '@/lib/status-context';
 import type { NodeWithAgent } from '@/lib/api';
 import {
   buildConsoleContext,
@@ -18,13 +19,15 @@ import {
 } from '@/lib/console-capabilities';
 import { formatNodeLabelFromNode } from '@/lib/node-label';
 import { nodeConsoleUrl } from '@/lib/node-console';
-import type { ClusterConfig, GatewayInfo, NodeConfig } from '@/lib/types';
+import type { NodeConfig } from '@/lib/types';
 
 export default function NodesPage() {
   const [nodes, setNodes] = useState<NodeWithAgent[]>([]);
-  const [gateway, setGateway] = useState<GatewayInfo | null>(null);
-  const [cluster, setCluster] = useState<ClusterConfig | null>(null);
-  const [enabledDeployments, setEnabledDeployments] = useState(0);
+  const { status: applianceStatus } = useApplianceStatus();
+  const gateway = applianceStatus?.gateway ?? null;
+  const cluster = applianceStatus?.config?.cluster ?? null;
+  const enabledDeployments =
+    applianceStatus?.config?.deployments.filter((d) => d.enabled).length ?? 0;
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -41,14 +44,8 @@ export default function NodesPage() {
   const load = useCallback(() => {
     setLoading(true);
     setError(null);
-    return Promise.all([api.listNodes(), api.status()])
-      .then(([nodeList, status]) => {
+    return api.listNodes().then((nodeList) => {
         setNodes(nodeList);
-        setGateway(status.gateway ?? null);
-        setCluster(status.config?.cluster ?? null);
-        setEnabledDeployments(
-          status.config?.deployments.filter((d) => d.enabled).length ?? 0,
-        );
         setLoading(false);
       })
       .catch((e) => {

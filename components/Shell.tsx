@@ -16,8 +16,8 @@ import {
 
 import { ApplianceIdentityBar } from '@/components/ApplianceIdentityBar';
 import { Logo } from '@/components/Logo';
-import { api } from '@/lib/api';
 import { cn } from '@/lib/cn';
+import { useApplianceStatus } from '@/lib/status-context';
 import {
   buildConsoleContext,
   NAV_ROUTES,
@@ -52,20 +52,20 @@ export function Shell({ children }: { children: React.ReactNode }) {
     'config',
   ]);
   const [footer, setFooter] = useState<string | null>(null);
+  const { status } = useApplianceStatus();
 
   useEffect(() => {
-    api
-      .status()
-      .then((status) => {
-        if (status.config?.appliance_id) {
-          setFooter(status.config.appliance_id);
-        }
-        if (status.gateway && status.config?.cluster) {
-          setNavIds(visibleNavItems(buildConsoleContext(status.gateway, status.config.cluster)));
-        }
-      })
-      .catch(() => setFooter(null));
-  }, []);
+    if (!status) {
+      setFooter(null);
+      return;
+    }
+    if (status.config?.appliance_id) {
+      setFooter(status.config.appliance_id);
+    }
+    if (status.gateway && status.config?.cluster) {
+      setNavIds(visibleNavItems(buildConsoleContext(status.gateway, status.config.cluster)));
+    }
+  }, [status]);
 
   return (
     <div className="min-h-screen flex">

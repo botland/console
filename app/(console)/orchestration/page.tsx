@@ -7,6 +7,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { PageState } from '@/components/PageState';
 import { Card, Label, PageHeader, Select } from '@/components/ui';
 import { api, ApiError } from '@/lib/api';
+import { useApplianceStatus } from '@/lib/status-context';
 import {
   describeOrchestrationSwitch,
   waitForOrchestrationSettle,
@@ -27,7 +28,6 @@ import type {
   ApplianceConfig,
   ComputeBackend,
   FederationLayout,
-  GatewayInfo,
   OrchestrationConfig,
   ServingMode,
 } from '@/lib/types';
@@ -47,7 +47,8 @@ export default function OrchestrationPage() {
   const [pendingHead, setPendingHead] = useState<string | null>(null);
   const [migratePreview, setMigratePreview] = useState<string | null>(null);
   const [switching, setSwitching] = useState<{ title: string; detail?: string } | null>(null);
-  const [gateway, setGateway] = useState<GatewayInfo | null>(null);
+  const { status: applianceStatus } = useApplianceStatus();
+  const gateway = applianceStatus?.gateway ?? null;
   const [detachOpen, setDetachOpen] = useState(false);
 
   const enabledDeployments = config?.deployments.filter((d) => d.enabled).length ?? 0;
@@ -59,11 +60,10 @@ export default function OrchestrationPage() {
   const reload = useCallback(() => {
     setLoading(true);
     setError(null);
-    return Promise.all([api.getOrchestration(), api.getConfig(), api.status()])
-      .then(([cl, cfg, status]) => {
+    return Promise.all([api.getOrchestration(), api.getConfig()])
+      .then(([cl, cfg]) => {
         setCluster(cl);
         setConfig(cfg);
-        setGateway(status.gateway ?? null);
         setLoading(false);
       })
       .catch((e) => {

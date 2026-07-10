@@ -6,7 +6,8 @@ import { PageState } from '@/components/PageState';
 import { Button, Card, Input, Label, PageHeader } from '@/components/ui';
 import { api, ApiError } from '@/lib/api';
 import { formatNodeLabel } from '@/lib/node-label';
-import type { GatewayInfo, SystemConfig } from '@/lib/types';
+import { useApplianceStatus } from '@/lib/status-context';
+import type { SystemConfig } from '@/lib/types';
 
 type IdentityDraft = {
   hostname: string;
@@ -18,8 +19,9 @@ export default function SystemPage() {
   const [draft, setDraft] = useState<SystemConfig | null>(null);
   const [identity, setIdentity] = useState<IdentityDraft | null>(null);
   const [identityBaseline, setIdentityBaseline] = useState<IdentityDraft | null>(null);
-  const [localNodeId, setLocalNodeId] = useState<string | null>(null);
-  const [gateway, setGateway] = useState<GatewayInfo | null>(null);
+  const { status: applianceStatus } = useApplianceStatus();
+  const gateway = applianceStatus?.gateway ?? null;
+  const localNodeId = gateway?.local_node_id ?? null;
   const [error, setError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -27,26 +29,9 @@ export default function SystemPage() {
   const load = useCallback(() => {
     setLoading(true);
     setError(null);
-    return Promise.all([api.getSystem(), api.status()])
-      .then(([s, status]) => {
-        const gw = status.gateway;
-        const nodeId = gw?.local_node_id ?? null;
-        const localNode =
-          status.config?.nodes.find((n) => n.id === nodeId) ??
-          (nodeId ? { hostname: '', ip: '' } : null);
-
+    return api.getSystem().then((s) => {
         setSystem(s);
         setDraft(s);
-        setGateway(gw ?? null);
-        setLocalNodeId(nodeId);
-        if (localNode) {
-          const idDraft = { hostname: localNode.hostname, ip: localNode.ip };
-          setIdentity(idDraft);
-          setIdentityBaseline(idDraft);
-        } else {
-          setIdentity(null);
-          setIdentityBaseline(null);
-        }
         setLoading(false);
       })
       .catch((e) => {
@@ -59,6 +44,18 @@ export default function SystemPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (identityBaseline !== null || !localNodeId || !applianceStatus?.config) {
+      return;
+    }
+    const localNode =
+      applianceStatus.config.nodes.find((n) => n.id === localNodeId) ??
+      { hostname: '', ip: '' };
+    const idDraft = { hostname: localNode.hostname, ip: localNode.ip };
+    setIdentity(idDraft);
+    setIdentityBaseline(idDraft);
+  }, [applianceStatus, identityBaseline, localNodeId]);
 
   const hostnameChanged =
     identity &&

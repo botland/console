@@ -8,13 +8,14 @@ import { PageError, PageLoading } from '@/components/PageState';
 import { DeploymentBadge } from '@/components/StatusBadge';
 import { Button, Card, PageHeader } from '@/components/ui';
 import { api, ApiError } from '@/lib/api';
+import { useApplianceStatus } from '@/lib/status-context';
 import {
   buildConsoleContext,
   canManageClusterDeployments,
   isDistributedWorker,
 } from '@/lib/console-capabilities';
 import { formatNodeLabelFromNode } from '@/lib/node-label';
-import type { DeploymentConfig, GatewayInfo, NodeConfig, OrchestrationConfig } from '@/lib/types';
+import type { DeploymentConfig, NodeConfig, OrchestrationConfig } from '@/lib/types';
 
 export default function DeploymentsPage() {
   const [deployments, setDeployments] = useState<DeploymentConfig[]>([]);
@@ -23,22 +24,17 @@ export default function DeploymentsPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<DeploymentConfig | null | 'new'>(null);
-  const [gateway, setGateway] = useState<GatewayInfo | null>(null);
+  const { status: applianceStatus } = useApplianceStatus();
+  const gateway = applianceStatus?.gateway ?? null;
 
   const load = useCallback(() => {
     setLoading(true);
     setError(null);
-    return Promise.all([
-      api.listDeployments(),
-      api.getOrchestration(),
-      api.getConfig(),
-      api.status(),
-    ])
-      .then(([deps, cl, config, status]) => {
+    return Promise.all([api.listDeployments(), api.getOrchestration(), api.getConfig()])
+      .then(([deps, cl, config]) => {
         setDeployments(deps);
         setCluster(cl);
         setNodes(config.nodes);
-        setGateway(status.gateway ?? null);
         setLoading(false);
       })
       .catch((e) => {

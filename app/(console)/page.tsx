@@ -1,49 +1,22 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-
 import { GpuBar } from '@/components/GpuBar';
 import { PageError, PageLoading } from '@/components/PageState';
 import { ApplianceBadge } from '@/components/StatusBadge';
 import { Card, PageHeader } from '@/components/ui';
 import { effectiveApplianceState, hasDegradedSignals } from '@/lib/appliance-status';
-import { api, ApiError } from '@/lib/api';
 import { formatNodeLabelFromNode } from '@/lib/node-label';
-import type { ApplianceConfig, ApplianceStatus } from '@/lib/types';
-
-type OverviewData = ApplianceStatus & {
-  config: ApplianceConfig | null;
-  config_error?: string;
-};
+import { useApplianceStatus } from '@/lib/status-context';
 
 export default function OverviewPage() {
-  const [status, setStatus] = useState<OverviewData | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(() => {
-    setError(null);
-    return api
-      .status()
-      .then(setStatus)
-      .catch((e) => {
-        setError(e instanceof ApiError ? e.message : 'Failed to load appliance status');
-        console.error(e);
-      });
-  }, []);
-
-  useEffect(() => {
-    load();
-    const id = setInterval(load, 5000);
-    const es = new EventSource('/api/v1/ws');
-    es.onmessage = () => load();
-    return () => {
-      clearInterval(id);
-      es.close();
-    };
-  }, [load]);
+  const { status, error, loading, refresh } = useApplianceStatus();
 
   if (error && !status) {
-    return <PageError error={error} onRetry={load} />;
+    return <PageError error={error} onRetry={refresh} />;
+  }
+
+  if (loading && !status) {
+    return <PageLoading message="Loading appliance status…" />;
   }
 
   if (!status) {

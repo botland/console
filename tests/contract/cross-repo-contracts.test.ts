@@ -22,4 +22,13 @@ describe('cross-repo contracts', () => {
     expect(bundle.appliance_id).toBe('forge-demo-001');
     expect(bundle.bundle_version).toBe(1);
   });
+
+  it('loads support polling limits', () => {
+    const limits = loadContract<{
+      diagnosis_timeout_sec: number;
+      diagnosis_max_retries: number;
+    }>('support-polling-limits.json');
+    expect(limits.diagnosis_timeout_sec).toBe(360);
+    expect(limits.diagnosis_max_retries).toBe(2);
+  });
 });
