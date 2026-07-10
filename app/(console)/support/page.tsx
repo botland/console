@@ -37,6 +37,11 @@ function formatWhen(iso: string): string {
   }
 }
 
+// Backend DIAGNOSIS_TIMEOUT_SEC is ~360s; Grok CLI often needs 45–120s.
+// Keep client poll ≥ that budget so we don't show a false timeout while analysis succeeds.
+const POLL_INTERVAL_MS = 2000;
+const POLL_MAX_MS = 6 * 60 * 1000;
+
 export default function SupportPage() {
   const [entitlement, setEntitlement] = useState<EntitlementResponse | null>(null);
   const [preview, setPreview] = useState<DiagnosticBundle | null>(null);
@@ -104,7 +109,9 @@ export default function SupportPage() {
 
   const pollTicket = async (ticketId: string) => {
     setPolling(true);
-    for (let attempt = 0; attempt < 40; attempt += 1) {
+    setSubmitError(null);
+    const deadline = Date.now() + POLL_MAX_MS;
+    while (Date.now() < deadline) {
       const res = await fetch(`/api/support/tickets/${ticketId}`);
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -115,14 +122,32 @@ export default function SupportPage() {
       const body = (await res.json()) as TicketStatusResponse;
       setTicket(body);
       if (body.status === 'complete' || body.status === 'failed') {
+        setSubmitError(null);
         setPolling(false);
         await loadHistory();
         return;
       }
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+    }
+    // Final check: analysis may have finished between the last poll and deadline.
+    try {
+      const res = await fetch(`/api/support/tickets/${ticketId}`);
+      if (res.ok) {
+        const body = (await res.json()) as TicketStatusResponse;
+        setTicket(body);
+        if (body.status === 'complete' || body.status === 'failed') {
+          setSubmitError(null);
+          setPolling(false);
+          await loadHistory();
+          return;
+        }
+      }
+    } catch {
+      // fall through to timeout message
     }
     setSubmitError('Support analysis timed out. Try again later.');
     setPolling(false);
+    await loadHistory();
   };
 
   const submit = async () => {
