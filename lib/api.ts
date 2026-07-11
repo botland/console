@@ -1,3 +1,4 @@
+import { withBasePath } from '@/lib/base-path';
 import type {
   ApplianceConfig,
   ApplianceStatus,
@@ -32,7 +33,8 @@ export type StatusResponse = ApplianceStatus & {
 };
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, init);
+  // withBasePath: no-op on real appliances (basePath empty); prefixes /demo in marketing demo.
+  const res = await fetch(withBasePath(url), init);
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
     const message = (err as { error?: string }).error ?? res.statusText;
@@ -53,7 +55,7 @@ export const api = {
       body: JSON.stringify(config),
     }),
 
-  exportConfig: () => window.open('/api/config/export', '_blank'),
+  exportConfig: () => window.open(withBasePath('/api/config/export'), '_blank'),
 
   importConfig: (config: unknown) =>
     fetchJson<{ applied: boolean }>('/api/import', {

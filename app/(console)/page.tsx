@@ -8,6 +8,7 @@ import { ApplianceBadge } from '@/components/StatusBadge';
 import { Card, PageHeader } from '@/components/ui';
 import { effectiveApplianceState, hasDegradedSignals } from '@/lib/appliance-status';
 import { api, ApiError } from '@/lib/api';
+import { withBasePath } from '@/lib/base-path';
 import type { ApplianceConfig, ApplianceStatus } from '@/lib/types';
 
 type OverviewData = ApplianceStatus & {
@@ -33,7 +34,7 @@ export default function OverviewPage() {
   useEffect(() => {
     load();
     const id = setInterval(load, 5000);
-    const es = new EventSource('/api/v1/ws');
+    const es = new EventSource(withBasePath('/api/v1/ws'));
     es.onmessage = () => load();
     return () => {
       clearInterval(id);
