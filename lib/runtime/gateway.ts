@@ -29,7 +29,7 @@ export async function getHeadApiBase(): Promise<string> {
   }
   const { getConfig } = await import('./index');
   const config = await getConfig();
-  const port = process.env.APPLIANCE_CONSOLE_PORT ?? process.env.APPLIANCE_PORT ?? '3000';
+  const port = process.env.APPLIANCE_CONSOLE_PORT ?? process.env.APPLIANCE_PORT ?? '80';
   return `http://${config.system.network.head_ip}:${port}`;
 }
 

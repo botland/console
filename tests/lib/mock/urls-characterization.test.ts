@@ -16,7 +16,16 @@ describe('head URL characterization (REFACTO §1.3)', () => {
     delete process.env.APPLIANCE_PORT;
   });
 
-  it('store and gateway agree on default head URL', async () => {
+  it('documents default port divergence between mock store and runtime gateway', async () => {
+    const fromStore = getGatewayStatus();
+    const fromGateway = await getGatewayInfo();
+    expect(fromStore.head_api_url).toBe('http://192.168.1.10:3000/api');
+    expect(fromGateway.head_api_url).toBe('http://192.168.1.10:80/api');
+    expect(fromStore.head_api_url).not.toBe(fromGateway.head_api_url);
+  });
+
+  it('store and gateway agree when APPLIANCE_CONSOLE_PORT is set', async () => {
+    process.env.APPLIANCE_CONSOLE_PORT = '3000';
     const fromStore = getGatewayStatus();
     const fromGateway = await getGatewayInfo();
     expect(fromStore.head_api_url).toBe(fromGateway.head_api_url);
