@@ -9,7 +9,7 @@ describe('GET /api/status', () => {
   beforeEach(() => resetStore());
 
   it('returns status and config', async () => {
-    const res = await GET(new Request("http://localhost"));
+    const res = await GET();
     const body = await res.json();
     expect(res.status).toBe(200);
     expect(body.state).toBe('READY');
@@ -22,7 +22,7 @@ describe('GET /api/status', () => {
   it('returns 200 with status when config load fails', async () => {
     vi.spyOn(runtime, 'getConfig').mockRejectedValueOnce(new Error('Invalid appliance configuration'));
 
-    const res = await GET(new Request('http://localhost'));
+    const res = await GET();
     const body = await res.json();
 
     expect(res.status).toBe(200);

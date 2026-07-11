@@ -7,6 +7,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { PageState } from '@/components/PageState';
 import { Card, Label, PageHeader, Select } from '@/components/ui';
 import { api, ApiError } from '@/lib/api';
+import { useApplianceStatus } from '@/lib/status-context';
 import {
   describeOrchestrationSwitch,
   waitForOrchestrationSettle,
@@ -22,11 +23,11 @@ import {
   canDetachFromCluster,
   canEditOrchestrationTopology,
 } from '@/lib/console-capabilities';
+import { formatNodeLabelFromNode } from '@/lib/node-label';
 import type {
   ApplianceConfig,
   ComputeBackend,
   FederationLayout,
-  GatewayInfo,
   OrchestrationConfig,
   ServingMode,
 } from '@/lib/types';
@@ -46,7 +47,8 @@ export default function OrchestrationPage() {
   const [pendingHead, setPendingHead] = useState<string | null>(null);
   const [migratePreview, setMigratePreview] = useState<string | null>(null);
   const [switching, setSwitching] = useState<{ title: string; detail?: string } | null>(null);
-  const [gateway, setGateway] = useState<GatewayInfo | null>(null);
+  const { status: applianceStatus } = useApplianceStatus();
+  const gateway = applianceStatus?.gateway ?? null;
   const [detachOpen, setDetachOpen] = useState(false);
 
   const enabledDeployments = config?.deployments.filter((d) => d.enabled).length ?? 0;
@@ -58,11 +60,10 @@ export default function OrchestrationPage() {
   const reload = useCallback(() => {
     setLoading(true);
     setError(null);
-    return Promise.all([api.getOrchestration(), api.getConfig(), api.status()])
-      .then(([cl, cfg, status]) => {
+    return Promise.all([api.getOrchestration(), api.getConfig()])
+      .then(([cl, cfg]) => {
         setCluster(cl);
         setConfig(cfg);
-        setGateway(status.gateway ?? null);
         setLoading(false);
       })
       .catch((e) => {
@@ -178,7 +179,9 @@ export default function OrchestrationPage() {
         const result = await api.migrateHead(targetId);
         if (result.success) {
           setMigratePreview(
-            `Head is now ${to?.hostname} (${result.head.head_ip}). Open http://${result.head.head_ip}/ if this page becomes unreachable.`,
+            `Head is now ${formatNodeLabelFromNode(
+              to ?? { hostname: '', ip: result.head.head_ip },
+            )}. Open http://${result.head.head_ip}/ if this page becomes unreachable.`,
           );
           await reload();
         }
@@ -389,8 +392,16 @@ export default function OrchestrationPage() {
                   <div className="grid grid-cols-2 gap-3 mt-2">
                     {(
                       [
-                        ['replicated', 'Replicated (throughput)', 'Same model across nodes'],
-                        ['diverse', 'Diverse (multi-model)', 'Multiple enabled deployments'],
+                        [
+                          'replicated',
+                          'Replicated (throughput)',
+                          'Spread each model’s replicas across nodes',
+                        ],
+                        [
+                          'diverse',
+                          'Diverse (spread)',
+                          'Prefer different models on different nodes',
+                        ],
                       ] as const
                     ).map(([value, title, hint]) => (
                       <button
@@ -414,6 +425,10 @@ export default function OrchestrationPage() {
                       </button>
                     ))}
                   </div>
+                  <p className="mt-2 text-xs text-slate-500">
+                    Enable multiple models in either layout when GPUs and VRAM allow. Layout
+                    only changes auto-placement preference.
+                  </p>
                 </div>
               )}
 
@@ -514,7 +529,7 @@ export default function OrchestrationPage() {
           <ConfirmDialog
             open={!!pendingHead}
             title="Migrate head node?"
-            message={`Head will move from ${config.nodes.find((n) => n.id === cluster.head_node_id)?.hostname ?? cluster.head_node_id} to ${config.nodes.find((n) => n.id === pendingHead)?.hostname ?? pendingHead}. ${enabledDeployments} deployment(s) will reschedule. Workers will reconnect to the new head.`}
+            message={`Head will move from ${formatNodeLabelFromNode(config.nodes.find((n) => n.id === cluster.head_node_id) ?? { hostname: cluster.head_node_id, ip: '' })} to ${formatNodeLabelFromNode(config.nodes.find((n) => n.id === pendingHead) ?? { hostname: pendingHead ?? '', ip: '' })}. ${enabledDeployments} deployment(s) will reschedule. Workers will reconnect to the new head.`}
             confirmLabel="Migrate head"
             danger
             onConfirm={confirmHeadMigration}

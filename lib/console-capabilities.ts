@@ -8,6 +8,7 @@ export type ConsoleNavId =
   | 'nodes'
   | 'storage'
   | 'system'
+  | 'support'
   | 'config';
 
 export type ConsoleContext = {
@@ -36,7 +37,7 @@ export function isDistributedCoordinator(ctx: ConsoleContext): boolean {
 
 export function visibleNavItems(ctx: ConsoleContext): ConsoleNavId[] {
   const backend = resolveComputeBackend(ctx.cluster);
-  const items: ConsoleNavId[] = ['overview', 'orchestration', 'nodes', 'storage', 'system'];
+  const items: ConsoleNavId[] = ['overview', 'orchestration', 'nodes', 'storage', 'system', 'support'];
 
   if (isStandalone(ctx.cluster) || isDistributedCoordinator(ctx)) {
     items.splice(1, 0, 'deployments');
@@ -96,5 +97,6 @@ export const NAV_ROUTES: Record<ConsoleNavId, string> = {
   nodes: '/nodes',
   storage: '/storage',
   system: '/system',
+  support: '/support',
   config: '/config',
 };

@@ -5,6 +5,13 @@ import type {
   ServingMode,
 } from '@/lib/types';
 
+import { resolvePlacementVramMb } from '@/lib/validation/placement-vram';
+import {
+  capContextLength,
+  estimateWeightGb,
+  weightsExceedGpuVram,
+} from '@/lib/validation/vram';
+
 function totalGpus(config: ApplianceConfig): number {
   return config.nodes.reduce(
     (sum, n) => sum + Math.max(0, n.gpus.length - n.gpus_reserved_for_system),
@@ -75,6 +82,31 @@ export function deriveRecommendation(
   if (deployment.source.type === 'huggingface' && deployment.source.repo_id.includes('32B')) {
     context_length = 32768;
     gpus_per_instance = Math.max(gpus_per_instance, Math.min(4, perNode));
+  }
+
+  if (deployment.source.type === 'huggingface') {
+    const modelId = deployment.source.repo_id.trim();
+    const util = deployment.parallelism.gpu_utilization ?? 0.85;
+    const hasPlacement = (deployment.placement?.targets?.length ?? 0) > 0;
+    const vramMb = resolvePlacementVramMb(deployment, config, gpus_per_instance);
+    if (modelId && vramMb) {
+      const weightGb = estimateWeightGb(modelId);
+      if (weightGb !== null && weightsExceedGpuVram(modelId, vramMb, gpus_per_instance)) {
+        warnings.push(
+          `Model weights (~${weightGb.toFixed(1)} GB) exceed target GPU (${Math.round(vramMb / 1024)} GB). ` +
+            `Use a quantized model, a smaller model, or more GPUs per instance.`,
+        );
+        if (hasPlacement) {
+          context_length = 512;
+        }
+      } else {
+        const capped = capContextLength(modelId, context_length, util, vramMb);
+        if (capped < context_length) {
+          warnings.push(`Context capped to ${capped} tokens for GPU memory on target hardware.`);
+          context_length = capped;
+        }
+      }
+    }
   }
 
   return {

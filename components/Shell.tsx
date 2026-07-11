@@ -11,12 +11,13 @@ import {
   Server,
   Settings,
   Sliders,
+  LifeBuoy,
 } from 'lucide-react';
 
 import { ApplianceIdentityBar } from '@/components/ApplianceIdentityBar';
 import { Logo } from '@/components/Logo';
-import { api } from '@/lib/api';
 import { cn } from '@/lib/cn';
+import { useApplianceStatus } from '@/lib/status-context';
 import {
   buildConsoleContext,
   NAV_ROUTES,
@@ -29,11 +30,12 @@ const NAV_META: Record<
   { label: string; icon: typeof LayoutDashboard }
 > = {
   overview: { label: 'Overview', icon: LayoutDashboard },
-  deployments: { label: 'Deployments', icon: Box },
+  deployments: { label: 'Models', icon: Box },
   orchestration: { label: 'Orchestration', icon: Network },
   nodes: { label: 'Nodes', icon: Server },
   storage: { label: 'Storage', icon: HardDrive },
   system: { label: 'System', icon: Settings },
+  support: { label: 'Support', icon: LifeBuoy },
   config: { label: 'Config', icon: Sliders },
 };
 
@@ -46,23 +48,24 @@ export function Shell({ children }: { children: React.ReactNode }) {
     'nodes',
     'storage',
     'system',
+    'support',
     'config',
   ]);
   const [footer, setFooter] = useState<string | null>(null);
+  const { status } = useApplianceStatus();
 
   useEffect(() => {
-    api
-      .status()
-      .then((status) => {
-        if (status.config?.appliance_id) {
-          setFooter(status.config.appliance_id);
-        }
-        if (status.gateway && status.config?.cluster) {
-          setNavIds(visibleNavItems(buildConsoleContext(status.gateway, status.config.cluster)));
-        }
-      })
-      .catch(() => setFooter(null));
-  }, []);
+    if (!status) {
+      setFooter(null);
+      return;
+    }
+    if (status.config?.appliance_id) {
+      setFooter(status.config.appliance_id);
+    }
+    if (status.gateway && status.config?.cluster) {
+      setNavIds(visibleNavItems(buildConsoleContext(status.gateway, status.config.cluster)));
+    }
+  }, [status]);
 
   return (
     <div className="min-h-screen flex">

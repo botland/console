@@ -2,9 +2,14 @@
 
 import { useEffect, useMemo, useState } from 'react';
 
-import { Button, Input, Label, Select } from '@/components/ui';
+import { Button, FieldLabel, Input, Label, Select } from '@/components/ui';
 import { api } from '@/lib/api';
-import { availableGpus, resolveDeploymentFormMode } from '@/lib/deployment-ui';
+import { DEPLOYMENT_VOCAB } from '@/lib/deployment-vocabulary';
+import {
+  availableGpus,
+  resolveDeploymentFormMode,
+  resolvePlacementMode,
+} from '@/lib/deployment-ui';
 import type {
   DeploymentConfig,
   DeploymentPlacementTarget,
@@ -14,9 +19,7 @@ import type {
   ValidationResult,
 } from '@/lib/types';
 
-function emptyDeployment(nodes: NodeConfig[]): DeploymentConfig {
-  const node = nodes.find((item) => item.status === 'online') ?? nodes[0];
-  const gpuIndices = node ? availableGpus(node).slice(0, 1) : [0];
+function emptyDeployment(_nodes: NodeConfig[]): DeploymentConfig {
   return {
     id: `dep-${Date.now()}`,
     display_name: '',
@@ -29,12 +32,9 @@ function emptyDeployment(nodes: NodeConfig[]): DeploymentConfig {
       instances: 1,
       gpus_per_instance: 1,
       nodes_per_instance: 1,
+      gpu_utilization: 0.85,
       autoscaling: null,
     },
-    placement:
-      node && gpuIndices.length
-        ? { targets: [{ node_id: node.id, gpu_indices: gpuIndices }] }
-        : undefined,
     status: 'reconciling',
   };
 }
@@ -83,9 +83,18 @@ export function DeploymentForm({
 }) {
   const [dep, setDep] = useState<DeploymentConfig>(() => {
     const base = initial ?? emptyDeployment(nodes);
-    const mode = resolveDeploymentFormMode(cluster);
+    const mode = resolveDeploymentFormMode(cluster, base);
     if (mode.showPlacement) {
-      return { ...base, placement: ensurePlacementTargets(base, nodes) };
+      return {
+        ...base,
+        placement: {
+          mode: 'manual',
+          targets: ensurePlacementTargets(base, nodes)?.targets ?? [],
+        },
+      };
+    }
+    if (mode.canChoosePlacement) {
+      return { ...base, placement: { mode: 'auto' } };
     }
     return base;
   });
@@ -93,7 +102,8 @@ export function DeploymentForm({
   const [rec, setRec] = useState<PlannerRecommendation | null>(null);
   const [validation, setValidation] = useState<ValidationResult | null>(null);
 
-  const mode = useMemo(() => resolveDeploymentFormMode(cluster), [cluster]);
+  const mode = useMemo(() => resolveDeploymentFormMode(cluster, dep), [cluster, dep]);
+  const placementMode = resolvePlacementMode(dep.placement, cluster);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -117,9 +127,27 @@ export function DeploymentForm({
         },
       };
       if (mode.showPlacement) {
-        next.placement = ensurePlacementTargets(next, nodes);
+        next.placement = {
+          mode: 'manual',
+          targets: ensurePlacementTargets(next, nodes)?.targets ?? [],
+        };
       }
       return next;
+    });
+  };
+
+  const updatePlacementMode = (nextMode: 'auto' | 'manual') => {
+    setDep((current) => {
+      if (nextMode === 'manual') {
+        return {
+          ...current,
+          placement: {
+            mode: 'manual',
+            targets: ensurePlacementTargets(current, nodes)?.targets ?? [],
+          },
+        };
+      }
+      return { ...current, placement: { mode: 'auto' } };
     });
   };
 
@@ -134,11 +162,35 @@ export function DeploymentForm({
       };
       const next: DeploymentConfig = { ...current, parallelism };
       if (mode.showPlacement) {
-        next.placement = ensurePlacementTargets(next, nodes);
+        next.placement = {
+          mode: 'manual',
+          targets: ensurePlacementTargets(next, nodes)?.targets ?? [],
+        };
       }
       return next;
     });
   };
+
+  const updateScale = (scale: DeploymentConfig['user_intent']['scale']) => {
+    setDep((current) => {
+      const next: DeploymentConfig = {
+        ...current,
+        user_intent: { ...current.user_intent, scale },
+      };
+      if (scale === 'auto') {
+        next.parallelism = { ...next.parallelism, instances: 1 };
+      }
+      if (mode.showPlacement) {
+        next.placement = {
+          mode: 'manual',
+          targets: ensurePlacementTargets(next, nodes)?.targets ?? [],
+        };
+      }
+      return next;
+    });
+  };
+
+  const instancesAuto = dep.user_intent.scale === 'auto';
 
   const updatePlacementTarget = (
     index: number,
@@ -189,7 +241,16 @@ export function DeploymentForm({
         nodes_per_instance: mode.showNodesPerInstance ? dep.parallelism.nodes_per_instance : 1,
       },
     };
-    if (!mode.showPlacement) {
+    if (mode.canChoosePlacement) {
+      if (mode.showPlacement) {
+        payload.placement = {
+          mode: 'manual',
+          targets: dep.placement?.targets ?? [],
+        };
+      } else {
+        payload.placement = { mode: 'auto' };
+      }
+    } else {
       delete payload.placement;
     }
     onSave(payload);
@@ -201,12 +262,13 @@ export function DeploymentForm({
     <div className="space-y-5">
       <div className="grid grid-cols-2 gap-4">
         <div className="col-span-2">
-          <Label>Display name (API model ID)</Label>
+          <FieldLabel label="Display name (API model ID)" hint={DEPLOYMENT_VOCAB.displayName}>
           <Input
             value={dep.display_name}
             onChange={(e) => setDep({ ...dep, display_name: e.target.value })}
             placeholder="my-company-llama-8b"
           />
+          </FieldLabel>
         </div>
         <div>
           <Label>Source type</Label>
@@ -284,24 +346,19 @@ export function DeploymentForm({
             </Select>
           </div>
           <div>
-            <Label>Scale</Label>
+            <FieldLabel label="Scale" hint={DEPLOYMENT_VOCAB.scalePreset}>
             <Select
               value={dep.user_intent.scale}
               onChange={(e) =>
-                setDep({
-                  ...dep,
-                  user_intent: {
-                    ...dep.user_intent,
-                    scale: e.target.value as DeploymentConfig['user_intent']['scale'],
-                  },
-                })
+                updateScale(e.target.value as DeploymentConfig['user_intent']['scale'])
               }
             >
               <option value="small">Small</option>
               <option value="medium">Medium</option>
               <option value="large">Large</option>
-              <option value="auto">Auto-scale</option>
+              <option value="auto">Auto (match cluster GPU slots)</option>
             </Select>
+            </FieldLabel>
           </div>
         </div>
         {rec && (
@@ -328,14 +385,40 @@ export function DeploymentForm({
         )}
       </div>
 
+      {mode.canChoosePlacement && (
+        <div className="rounded-xl border border-slate-800 bg-slate-900/30 p-4 space-y-4">
+          <div>
+            <FieldLabel
+              label="Placement"
+              hint={
+                placementMode === 'auto'
+                  ? DEPLOYMENT_VOCAB.placementAuto
+                  : DEPLOYMENT_VOCAB.placementManual
+              }
+            >
+              <Select
+                value={placementMode}
+                onChange={(e) => updatePlacementMode(e.target.value as 'auto' | 'manual')}
+              >
+                <option value="auto">Auto (cluster planner)</option>
+                <option value="manual">Manual (choose node &amp; GPU)</option>
+              </Select>
+            </FieldLabel>
+          </div>
+          {placementMode === 'manual' && (
+            <p className="text-xs text-slate-500">
+              Choose the node and GPU for each replica — including nodes that are offline or not yet
+              joined. Multiple models can share a GPU when their combined utilization stays at or
+              below 1.0.
+            </p>
+          )}
+        </div>
+      )}
+
       {mode.showPlacement && (
         <div className="rounded-xl border border-slate-800 bg-slate-900/30 p-4 space-y-4">
           <div>
-            <div className="text-sm font-medium text-slate-300">Placement</div>
-            <p className="mt-1 text-xs text-slate-500">
-              Manual placement is enabled (FEDERATION_AUTO_PLACEMENT=false). Choose the node and GPU
-              for each instance — including nodes that are offline or not yet joined.
-            </p>
+            <div className="text-sm font-medium text-slate-300">Instance targets</div>
           </div>
           {(dep.placement?.targets ?? []).map((target, index) => {
             const node = nodes.find((item) => item.id === target.node_id);
@@ -437,42 +520,147 @@ export function DeploymentForm({
       {advanced && (
         <div className="grid grid-cols-2 gap-4 rounded-xl border border-slate-800 p-4">
           <div>
-            <Label>Instances</Label>
+            <FieldLabel
+              label={`Instances${instancesAuto ? ' (auto)' : ''}`}
+              hint={instancesAuto ? DEPLOYMENT_VOCAB.instancesAuto : DEPLOYMENT_VOCAB.instances}
+            >
             <Input
               type="number"
               min={1}
-              value={dep.parallelism.instances}
+              disabled={instancesAuto}
+              value={instancesAuto ? 1 : dep.parallelism.instances}
               onChange={(e) => updateParallelism({ instances: +e.target.value })}
             />
+            </FieldLabel>
           </div>
           <div>
-            <Label>GPUs per instance {mode.standalone && '(max per node)'}</Label>
+            <FieldLabel
+              label={`GPUs per instance${mode.standalone ? ' (max per node)' : ' (tensor parallel)'}`}
+              hint={DEPLOYMENT_VOCAB.gpusPerInstance}
+            >
             <Input
               type="number"
               min={1}
               value={dep.parallelism.gpus_per_instance}
               onChange={(e) => updateParallelism({ gpus_per_instance: +e.target.value })}
             />
+            </FieldLabel>
           </div>
           {mode.showNodesPerInstance && (
             <div>
-              <Label>Nodes per instance</Label>
+              <FieldLabel
+                label="Nodes per instance (pipeline parallel)"
+                hint={DEPLOYMENT_VOCAB.nodesPerInstance}
+              >
               <Input
                 type="number"
                 min={1}
                 value={dep.parallelism.nodes_per_instance}
                 onChange={(e) => updateParallelism({ nodes_per_instance: +e.target.value })}
               />
+              </FieldLabel>
             </div>
           )}
           <div>
-            <Label>Context length</Label>
+            <FieldLabel label="Context length" hint={DEPLOYMENT_VOCAB.contextLength}>
             <Input
               type="number"
               value={dep.parallelism.context_length}
               onChange={(e) => updateParallelism({ context_length: +e.target.value })}
             />
+            </FieldLabel>
           </div>
+          <div>
+            <FieldLabel label="GPU memory utilization" hint={DEPLOYMENT_VOCAB.gpuUtilization}>
+            <Input
+              type="number"
+              min={0.1}
+              max={1}
+              step={0.05}
+              value={dep.parallelism.gpu_utilization ?? 0.85}
+              onChange={(e) => updateParallelism({ gpu_utilization: +e.target.value })}
+            />
+            </FieldLabel>
+          </div>
+          {mode.showAutoscaling && (
+            <div className="md:col-span-2 space-y-3 rounded-lg border border-slate-800 p-3">
+              <label className="flex items-center gap-2 text-sm text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={!!dep.parallelism.autoscaling}
+                  onChange={(e) =>
+                    setDep((current) => ({
+                      ...current,
+                      parallelism: {
+                        ...current.parallelism,
+                        autoscaling: e.target.checked
+                          ? {
+                              min_instances: 1,
+                              max_instances: Math.max(2, current.parallelism.instances),
+                              target_ongoing_requests: 8,
+                            }
+                          : null,
+                      },
+                    }))
+                  }
+                  className="rounded border-slate-600"
+                />
+                <span title={DEPLOYMENT_VOCAB.autoscaling}>Ray Serve autoscaling ⓘ</span>
+              </label>
+              {dep.parallelism.autoscaling && (
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <Label>Min replicas</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={dep.parallelism.autoscaling.min_instances}
+                      onChange={(e) =>
+                        updateParallelism({
+                          autoscaling: {
+                            ...dep.parallelism.autoscaling!,
+                            min_instances: +e.target.value,
+                          },
+                        })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <Label>Max replicas</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={dep.parallelism.autoscaling.max_instances}
+                      onChange={(e) =>
+                        updateParallelism({
+                          autoscaling: {
+                            ...dep.parallelism.autoscaling!,
+                            max_instances: +e.target.value,
+                          },
+                        })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <Label>Target requests</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={dep.parallelism.autoscaling.target_ongoing_requests}
+                      onChange={(e) =>
+                        updateParallelism({
+                          autoscaling: {
+                            ...dep.parallelism.autoscaling!,
+                            target_ongoing_requests: +e.target.value,
+                          },
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
           <div className="md:col-span-2">
             <p className="text-sm text-slate-500">
               Quantization is determined by the HuggingFace repo. Use a pre-quantized model

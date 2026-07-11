@@ -168,11 +168,11 @@ describe('mock store', () => {
 
   it('defaults gpu utilization when metric is missing', () => {
     const state = getState();
-    delete state.config.nodes[0].gpus[0].utilization_pct;
+    delete state.config.nodes[1].gpus[0].utilization_pct;
     saveState(state);
     resetTestState({ seed: false, clearDisk: false });
     getStatus();
-    expect(getConfig().nodes[0].gpus[0].utilization_pct).toBeGreaterThanOrEqual(5);
+    expect(getConfig().nodes[1].gpus[0].utilization_pct).toBeGreaterThanOrEqual(5);
   });
 
   it('migrates head successfully and broadcasts', () => {
@@ -335,6 +335,42 @@ describe('mock store', () => {
 
     expect(deleteDeployment('dep-new')).toBe(true);
     expect(deleteDeployment('missing')).toBe(false);
+  });
+
+  it('marks disabled deployments as stopped', () => {
+    const active = getDeployment('dep-awq-casper');
+    expect(active?.enabled).toBe(true);
+    const disabled = updateDeployment('dep-awq-casper', {
+      ...active!,
+      enabled: false,
+    });
+    expect(disabled?.status).toBe('stopped');
+    const listed = listDeployments().find((d) => d.id === 'dep-awq-casper');
+    expect(listed?.enabled).toBe(false);
+    expect(listed?.status).toBe('stopped');
+  });
+
+  it('lists only local workloads on worker gateways', () => {
+    process.env.APPLIANCE_LOCAL_NODE_ID = 'node-2';
+    resetTestState({ seed: true, clearDisk: true });
+    const local = listDeployments();
+    expect(local).toHaveLength(1);
+    expect(local[0].id).toBe('dep-awq-casper');
+    expect(local[0].enabled).toBe(true);
+
+    process.env.APPLIANCE_LOCAL_NODE_ID = 'node-3';
+    resetTestState({ seed: true, clearDisk: true });
+    expect(listDeployments()).toHaveLength(0);
+  });
+
+  it('exposes federation_auto_placement from env on orchestration extras', async () => {
+    const { withOrchestrationExtras, mockFederationAutoPlacementEnabled } = await import(
+      '@/lib/mock/store'
+    );
+    process.env.FEDERATION_AUTO_PLACEMENT = 'false';
+    expect(mockFederationAutoPlacementEnabled()).toBe(false);
+    expect(withOrchestrationExtras(getConfig().cluster).federation_auto_placement).toBe(false);
+    delete process.env.FEDERATION_AUTO_PLACEMENT;
   });
 
   it('updates system settings and storage mounts', () => {

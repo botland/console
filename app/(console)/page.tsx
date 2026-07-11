@@ -1,49 +1,22 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-
 import { GpuBar } from '@/components/GpuBar';
 import { PageError, PageLoading } from '@/components/PageState';
 import { ApplianceBadge } from '@/components/StatusBadge';
 import { Card, PageHeader } from '@/components/ui';
 import { effectiveApplianceState, hasDegradedSignals } from '@/lib/appliance-status';
-import { api, ApiError } from '@/lib/api';
-import { withBasePath } from '@/lib/base-path';
-import type { ApplianceConfig, ApplianceStatus } from '@/lib/types';
-
-type OverviewData = ApplianceStatus & {
-  config: ApplianceConfig | null;
-  config_error?: string;
-};
+import { formatNodeLabelFromNode } from '@/lib/node-label';
+import { useApplianceStatus } from '@/lib/status-context';
 
 export default function OverviewPage() {
-  const [status, setStatus] = useState<OverviewData | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(() => {
-    setError(null);
-    return api
-      .status()
-      .then(setStatus)
-      .catch((e) => {
-        setError(e instanceof ApiError ? e.message : 'Failed to load appliance status');
-        console.error(e);
-      });
-  }, []);
-
-  useEffect(() => {
-    load();
-    const id = setInterval(load, 5000);
-    const es = new EventSource(withBasePath('/api/v1/ws'));
-    es.onmessage = () => load();
-    return () => {
-      clearInterval(id);
-      es.close();
-    };
-  }, [load]);
+  const { status, error, loading, refresh } = useApplianceStatus();
 
   if (error && !status) {
-    return <PageError error={error} onRetry={load} />;
+    return <PageError error={error} onRetry={refresh} />;
+  }
+
+  if (loading && !status) {
+    return <PageLoading message="Loading appliance status…" />;
   }
 
   if (!status) {
@@ -56,7 +29,7 @@ export default function OverviewPage() {
   const modeLabel =
     config?.cluster.serving_mode === 'distributed' ? 'Distributed' : config ? 'Standalone' : '—';
   const headNode = config?.nodes.find((n) => n.is_head);
-  const degradedSignals = hasDegradedSignals(status);
+  const degradedSignals = hasDegradedSignals(status, config);
 
   return (
     <>
@@ -64,7 +37,9 @@ export default function OverviewPage() {
         title="Overview"
         description={
           config
-            ? `Appliance ${config.appliance_id} · Head: ${headNode?.hostname ?? 'unknown'}`
+            ? `Appliance ${config.appliance_id} · Head: ${
+                headNode ? formatNodeLabelFromNode(headNode) : 'unknown'
+              }`
             : `Head: ${status.head.head_ip || 'unknown'}`
         }
       />
@@ -92,7 +67,7 @@ export default function OverviewPage() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
         <Card>
           <div className="text-xs text-slate-500 mb-2">State</div>
-          <ApplianceBadge state={effectiveApplianceState(status)} />
+          <ApplianceBadge state={effectiveApplianceState(status, config)} />
         </Card>
         <Card>
           <div className="text-xs text-slate-500 mb-2">Serving topology</div>

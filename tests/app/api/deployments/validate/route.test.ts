@@ -1,13 +1,17 @@
 import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { sampleDeployment } from '@/tests/helpers/fixtures';
+import { minimalConfig, sampleDeployment } from '@/tests/helpers/fixtures';
 import { resetStore } from '@/tests/helpers/store';
+import { setConfig } from '@/lib/mock/store';
 
 import { POST } from '@/app/api/deployments/validate/route';
 
 describe('POST /api/deployments/validate', () => {
-  beforeEach(() => resetStore());
+  beforeEach(() => {
+    resetStore();
+    setConfig(minimalConfig({ deployments: [] }));
+  });
 
   it('validates deployment feasibility', async () => {
     const req = new NextRequest('http://localhost/api/deployments/validate', {

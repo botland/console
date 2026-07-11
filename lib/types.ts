@@ -55,6 +55,7 @@ export interface DeploymentParallelism {
   instances: number;
   gpus_per_instance: number;
   nodes_per_instance: number;
+  gpu_utilization?: number;
   autoscaling: AutoscalingConfig | null;
 }
 
@@ -63,8 +64,11 @@ export interface DeploymentPlacementTarget {
   gpu_indices: number[];
 }
 
+export type PlacementMode = 'auto' | 'manual';
+
 export interface DeploymentPlacement {
-  targets: DeploymentPlacementTarget[];
+  mode?: PlacementMode;
+  targets?: DeploymentPlacementTarget[];
 }
 
 export interface DeploymentConfig {

@@ -17,6 +17,10 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV HOSTNAME=0.0.0.0
 ENV PORT=3000
 
+# Git SHA or tag of the build (compose build-arg APP_VERSION / APPLIANCE_CONSOLE_VERSION).
+ARG APP_VERSION=dev
+ENV APPLIANCE_CONSOLE_VERSION=${APP_VERSION}
+
 RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
 
 COPY --from=builder /app/public ./public
