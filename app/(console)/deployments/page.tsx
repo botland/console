@@ -1,19 +1,21 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Plus, Pencil, Trash2 } from 'lucide-react';
+import { Plus, Pencil, Power, PowerOff, Trash2 } from 'lucide-react';
 
 import { DeploymentForm } from '@/components/DeploymentForm';
 import { PageError, PageLoading } from '@/components/PageState';
 import { DeploymentBadge } from '@/components/StatusBadge';
 import { Button, Card, PageHeader } from '@/components/ui';
 import { api, ApiError } from '@/lib/api';
+import { useApplianceStatus } from '@/lib/status-context';
 import {
   buildConsoleContext,
   canManageClusterDeployments,
   isDistributedWorker,
 } from '@/lib/console-capabilities';
-import type { DeploymentConfig, GatewayInfo, NodeConfig, OrchestrationConfig } from '@/lib/types';
+import { formatNodeLabelFromNode } from '@/lib/node-label';
+import type { DeploymentConfig, NodeConfig, OrchestrationConfig } from '@/lib/types';
 
 export default function DeploymentsPage() {
   const [deployments, setDeployments] = useState<DeploymentConfig[]>([]);
@@ -22,22 +24,17 @@ export default function DeploymentsPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<DeploymentConfig | null | 'new'>(null);
-  const [gateway, setGateway] = useState<GatewayInfo | null>(null);
+  const { status: applianceStatus } = useApplianceStatus();
+  const gateway = applianceStatus?.gateway ?? null;
 
   const load = useCallback(() => {
     setLoading(true);
     setError(null);
-    return Promise.all([
-      api.listDeployments(),
-      api.getOrchestration(),
-      api.getConfig(),
-      api.status(),
-    ])
-      .then(([deps, cl, config, status]) => {
+    return Promise.all([api.listDeployments(), api.getOrchestration(), api.getConfig()])
+      .then(([deps, cl, config]) => {
         setDeployments(deps);
         setCluster(cl);
         setNodes(config.nodes);
-        setGateway(status.gateway ?? null);
         setLoading(false);
       })
       .catch((e) => {
@@ -70,6 +67,20 @@ export default function DeploymentsPage() {
     load();
   };
 
+  const handleToggle = async (dep: DeploymentConfig) => {
+    const next = { ...dep, enabled: !dep.enabled };
+    if (next.enabled) {
+      const validation = await api.validate(next);
+      if (!validation.valid) {
+        setError(validation.errors.join(' '));
+        return;
+      }
+    }
+    setError(null);
+    await api.updateDeployment(dep.id, next);
+    load();
+  };
+
   const ctx =
     gateway && cluster ? buildConsoleContext(gateway, cluster) : null;
   const canManage = ctx ? canManageClusterDeployments(ctx) : true;
@@ -82,11 +93,11 @@ export default function DeploymentsPage() {
   return (
     <>
       <PageHeader
-        title="Deployments"
+        title="Models"
         description={
           localWorkloads
             ? 'Workloads assigned to this appliance in the cluster'
-            : 'Models served on this appliance'
+            : 'Inference models on this appliance (API: deployments)'
         }
         action={
           canManage ? (
@@ -119,7 +130,11 @@ export default function DeploymentsPage() {
       )}
 
       <div className="space-y-4">
-        {deployments.map((dep) => (
+        {deployments
+          .filter((dep) => editing === 'new' || editing === null || dep.id !== editing.id)
+          .map((dep) => {
+            const placementTarget = dep.placement?.targets?.[0];
+            return (
           <Card key={dep.id} className="flex flex-wrap items-center justify-between gap-4">
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-3 flex-wrap">
@@ -139,17 +154,35 @@ export default function DeploymentsPage() {
               <div className="mt-1 text-xs text-slate-500">
                 {dep.parallelism.instances} instance(s) · {dep.parallelism.gpus_per_instance}{' '}
                 GPU(s)/instance · {dep.user_intent.performance_goal.replace('_', ' ')}
-                {dep.placement?.targets?.[0] && (
+                {placementTarget && (
                   <>
                     {' '}
-                    · {dep.placement.targets[0].node_id} gpu
-                    {dep.placement.targets[0].gpu_indices.join(',')}
+                    ·{' '}
+                    {formatNodeLabelFromNode(
+                      nodes.find((n) => n.id === placementTarget.node_id) ?? {
+                        hostname: placementTarget.node_id,
+                        ip: '',
+                      },
+                    )}{' '}
+                    gpu{placementTarget.gpu_indices.join(',')}
                   </>
                 )}
               </div>
             </div>
             {canManage && (
               <div className="flex gap-2">
+                <Button
+                  variant="secondary"
+                  onClick={() => handleToggle(dep)}
+                  title={dep.enabled ? 'Disable deployment' : 'Enable deployment'}
+                  aria-label={dep.enabled ? 'Disable deployment' : 'Enable deployment'}
+                >
+                  {dep.enabled ? (
+                    <PowerOff className="w-4 h-4" />
+                  ) : (
+                    <Power className="w-4 h-4" />
+                  )}
+                </Button>
                 <Button variant="secondary" onClick={() => setEditing(dep)}>
                   <Pencil className="w-4 h-4" />
                 </Button>
@@ -159,8 +192,13 @@ export default function DeploymentsPage() {
               </div>
             )}
           </Card>
-        ))}
-        {!error && deployments.length === 0 && (
+            );
+          })}
+        {!error &&
+          deployments.filter(
+            (dep) => editing === 'new' || editing === null || dep.id !== editing.id,
+          ).length === 0 &&
+          editing !== 'new' && (
           <Card className="text-center text-slate-500 py-12">
             No deployments yet. Add a model to get started.
           </Card>

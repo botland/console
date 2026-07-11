@@ -16,6 +16,8 @@ export function normalizeClusterConfig(cluster: ClusterConfig): ClusterConfig {
     if (resolveComputeBackend(next) === 'cluster') {
       next.compute_backend = 'federation';
     }
+    // Standalone always serves on the local appliance; distributed head_gpu prefs
+    // are restored server-side when switching back to distributed.
     if (next.head_gpu === false) {
       next.head_gpu = true;
     }

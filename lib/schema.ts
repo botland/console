@@ -16,7 +16,7 @@ const gpuSchema = z.object({
 
 const nodeSchema = z.object({
   id: z.string(),
-  hostname: z.string(),
+  hostname: z.string().min(1),
   ip: z.string(),
   is_head: z.boolean(),
   gpus_reserved_for_system: z.number().min(0),
@@ -62,12 +62,15 @@ const deploymentSchema = z.object({
   }),
   placement: z
     .object({
-      targets: z.array(
-        z.object({
-          node_id: z.string().min(1),
-          gpu_indices: z.array(z.number().min(0)).min(1),
-        }),
-      ),
+      mode: z.enum(['auto', 'manual']).optional(),
+      targets: z
+        .array(
+          z.object({
+            node_id: z.string().min(1),
+            gpu_indices: z.array(z.number().min(0)).min(1),
+          }),
+        )
+        .optional(),
     })
     .optional(),
   status: z.enum(['healthy', 'reconciling', 'degraded', 'stopped', 'error']),

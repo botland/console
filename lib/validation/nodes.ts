@@ -15,13 +15,14 @@ export function validateNodeAddresses(nodes: NodeConfig[]): string | null {
     }
 
     const hostname = node.hostname.trim();
-    if (hostname) {
-      const other = byHostname.get(hostname);
-      if (other) {
-        return `Duplicate hostname ${hostname} (${other} and ${node.id})`;
-      }
-      byHostname.set(hostname, node.id);
+    if (!hostname) {
+      return `Node ${node.ip.trim() || node.id} requires a hostname`;
     }
+    const other = byHostname.get(hostname);
+    if (other) {
+      return `Duplicate hostname ${hostname} (${other} and ${node.id})`;
+    }
+    byHostname.set(hostname, node.id);
   }
 
   return null;

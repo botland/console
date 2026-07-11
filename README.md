@@ -14,6 +14,15 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
+### Version stamp (support bundles)
+
+Production images set `APPLIANCE_CONSOLE_VERSION` to a **git SHA or tag** (via Docker build-arg
+`APP_VERSION`, filled by the appliance stack’s `resolve-versions.sh`). Support diagnostic bundles
+use that value as `software.console_version` — do not rely on npm package version.
+
+When building via the InferEdge stack: set `APPLIANCE_PROD=false` (any branch) or `true` (must be
+on branch `prod`) in the stack `.env`.
+
 ## Design principles
 
 - **No technology leakage** — UI never mentions Ray, vLLM, or LiteLLM

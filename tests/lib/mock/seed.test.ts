@@ -12,6 +12,11 @@ describe('seed', () => {
   it('creates a demo cluster state', () => {
     const state = createSeedState();
     expect(state.config.nodes).toHaveLength(3);
+    expect(state.config.cluster.compute_backend).toBe('federation');
+    expect(state.config.cluster.federation_layout).toBe('diverse');
+    expect(state.config.cluster.head_gpu).toBe(false);
+    expect(state.config.deployments).toHaveLength(2);
+    expect(state.config.deployments.find((d) => d.enabled)?.placement?.mode).toBe('manual');
     expect(state.status.state).toBe('READY');
     expect(state.storage_usage.total_bytes).toBeGreaterThan(0);
   });

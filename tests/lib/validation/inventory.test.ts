@@ -9,8 +9,8 @@ describe('buildInventory', () => {
     const config = minimalConfig();
     const inv = buildInventory(config);
     expect(inv.online_node_count).toBe(3);
-    expect(inv.total_gpu_count).toBe(6);
-    expect(inv.available_gpu_count).toBe(5);
+    expect(inv.total_gpu_count).toBe(3);
+    expect(inv.available_gpu_count).toBe(3);
     expect(inv.max_gpus_per_node).toBe(2);
     expect(inv.head_online).toBe(true);
   });

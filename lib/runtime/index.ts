@@ -32,7 +32,7 @@ export async function getConfig(): Promise<ApplianceConfig> {
 
 export async function getOrchestration(): Promise<ClusterConfig> {
   if (isInferedgeRuntime()) return inferedge.getOrchestration();
-  return mock.getConfig().cluster;
+  return mock.withOrchestrationExtras(mock.getConfig().cluster);
 }
 
 /** @deprecated Use getOrchestration */
@@ -49,11 +49,7 @@ export async function putOrchestration(cluster: ClusterConfig): Promise<Orchestr
     return inferedge.updateOrchestration(cluster);
   }
   const config = mock.updateCluster(cluster);
-  return {
-    ...config.cluster,
-    federation_auto_placement: true,
-    reconcile_seq: null,
-  };
+  return mock.orchestrationPutResponse(config.cluster);
 }
 
 export async function updateOrchestration(partial: Partial<ClusterConfig>): Promise<ApplianceConfig> {
@@ -200,6 +196,23 @@ export async function exportConfigResponse(): Promise<Response> {
 
 export async function proxyWsStream(): Promise<Response> {
   return inferedge.proxyWsStream();
+}
+
+export async function getSupportDiagnostics(): Promise<import('@/lib/support/types').SupportDiagnostics> {
+  if (isInferedgeRuntime()) {
+    return inferedge.getSupportDiagnostics();
+  }
+  const { getConfig } = await import('@/lib/mock/store');
+  const { mockSupportDiagnostics } = await import('@/lib/support/diagnostics');
+  const config = getConfig();
+  return mockSupportDiagnostics(config.appliance_id);
+}
+
+export async function getControllerVersion(): Promise<string> {
+  if (isInferedgeRuntime()) {
+    return inferedge.getControllerVersion();
+  }
+  return 'mock';
 }
 
 export function resetTestState(options?: Parameters<typeof mock.resetTestState>[0]): void {

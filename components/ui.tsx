@@ -87,6 +87,34 @@ export function Label({ children }: { children: React.ReactNode }) {
   return <label className="mb-1.5 block text-xs font-medium text-slate-400">{children}</label>;
 }
 
+export function FieldLabel({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div>
+      <div className="mb-1.5 flex items-center gap-1.5">
+        <span className="text-xs font-medium text-slate-400">{label}</span>
+        {hint ? (
+          <span
+            className="cursor-help text-slate-500"
+            title={hint}
+            aria-label={hint}
+          >
+            ⓘ
+          </span>
+        ) : null}
+      </div>
+      {children}
+    </div>
+  );
+}
+
 export function PageHeader({
   title,
   description,

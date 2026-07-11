@@ -6,6 +6,7 @@ import { parseApplianceConfig } from '@/lib/schema';
 import type {
   ApplianceConfig,
   ApplianceStatus,
+  ClusterConfig,
   DeploymentConfig,
   GatewayInfo,
   HeadChangedPayload,
@@ -13,6 +14,8 @@ import type {
   MockState,
   NodeAgentState,
   NodeConfig,
+  OrchestrationConfig,
+  OrchestrationPutResponse,
   ReconcileEvent,
   StorageMount,
 } from '@/lib/types';
@@ -34,6 +37,26 @@ const wsListeners: Set<(payload: unknown) => void> = new Set();
 
 const AGENT_INTERVAL_MS = 5000;
 const AGENT_STALE_MS = 15000;
+
+/** Mirrors controller GET /orchestration read-only field (env default: manual placement). */
+export function mockFederationAutoPlacementEnabled(): boolean {
+  const raw = process.env.FEDERATION_AUTO_PLACEMENT?.trim().toLowerCase();
+  return raw !== 'false' && raw !== '0';
+}
+
+export function withOrchestrationExtras(cluster: ClusterConfig): OrchestrationConfig {
+  return {
+    ...cluster,
+    federation_auto_placement: mockFederationAutoPlacementEnabled(),
+  };
+}
+
+export function orchestrationPutResponse(cluster: ClusterConfig): OrchestrationPutResponse {
+  return {
+    ...withOrchestrationExtras(cluster),
+    reconcile_seq: null,
+  };
+}
 
 function ensureDir() {
   const dataDir = getDataDir();
@@ -302,7 +325,7 @@ export function detachFromCluster(): import('@/lib/types').OrchestrationPutRespo
   addEvent(`Node ${localId} detached from cluster — now standalone`, 'warn');
   saveState(state);
   startReconcile('Detached from cluster — restarting standalone inference');
-  return { ...cluster, federation_auto_placement: true, reconcile_seq: null };
+  return orchestrationPutResponse(cluster);
 }
 
 export function joinCluster(
@@ -332,9 +355,7 @@ export function joinCluster(
   saveState(state);
   startReconcile('Joined cluster — rescheduling workloads');
   return {
-    ...cluster,
-    federation_auto_placement: true,
-    reconcile_seq: null,
+    ...orchestrationPutResponse(cluster),
     coordinator_console_url: `http://${headNode.ip}`,
   };
 }
@@ -356,8 +377,31 @@ export function updateNode(nodeId: string, partial: Partial<NodeConfig>): NodeCo
   return node;
 }
 
+function deploymentAssignedToNode(dep: DeploymentConfig, nodeId: string): boolean {
+  const targets = dep.placement?.targets ?? [];
+  return targets.some((target) => target.node_id === nodeId);
+}
+
+function normalizeDeploymentStatus(dep: DeploymentConfig): DeploymentConfig {
+  return {
+    ...dep,
+    status: dep.enabled ? dep.status : 'stopped',
+  };
+}
+
 export function listDeployments(): DeploymentConfig[] {
-  return getState().config.deployments;
+  const state = getState();
+  if (isHeadCoordinator()) {
+    return state.config.deployments.map(normalizeDeploymentStatus);
+  }
+  const localId = getLocalNodeId();
+  return state.config.deployments
+    .filter((dep) => dep.enabled && deploymentAssignedToNode(dep, localId))
+    .map((dep) => ({
+      ...dep,
+      enabled: true,
+      status: dep.status === 'stopped' ? 'reconciling' : dep.status,
+    }));
 }
 
 export function getDeployment(id: string): DeploymentConfig | undefined {
@@ -366,20 +410,33 @@ export function getDeployment(id: string): DeploymentConfig | undefined {
 
 export function createDeployment(dep: DeploymentConfig): DeploymentConfig {
   const state = getState();
-  state.config.deployments.push(dep);
+  const saved: DeploymentConfig = {
+    ...dep,
+    status: dep.enabled ? 'reconciling' : 'stopped',
+  };
+  state.config.deployments.push(saved);
   saveState(state);
-  if (dep.enabled) startReconcile(`Deploying ${dep.display_name}`);
-  return dep;
+  if (saved.enabled) startReconcile(`Deploying ${saved.display_name}`);
+  return saved;
 }
 
 export function updateDeployment(id: string, dep: DeploymentConfig): DeploymentConfig | null {
   const state = getState();
   const idx = state.config.deployments.findIndex((d) => d.id === id);
   if (idx < 0) return null;
-  state.config.deployments[idx] = { ...dep, id };
+  const saved: DeploymentConfig = {
+    ...dep,
+    id,
+    status: dep.enabled ? 'reconciling' : 'stopped',
+  };
+  state.config.deployments[idx] = saved;
   saveState(state);
-  if (dep.enabled) startReconcile(`Updating deployment ${dep.display_name}`);
-  return state.config.deployments[idx];
+  if (saved.enabled) {
+    startReconcile(`Updating deployment ${saved.display_name}`);
+  } else {
+    addEvent(`Disabled deployment ${saved.display_name}`, 'info');
+  }
+  return saved;
 }
 
 export function deleteDeployment(id: string): boolean {

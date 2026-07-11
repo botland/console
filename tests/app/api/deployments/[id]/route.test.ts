@@ -12,20 +12,20 @@ describe('/api/deployments/[id]', () => {
   beforeEach(() => resetStore());
 
   it('GET returns deployment or 404', async () => {
-    const ok = await GET(new Request('http://localhost'), params('dep-qwen-32b'));
-    expect((await ok.json()).id).toBe('dep-qwen-32b');
+    const ok = await GET(new Request('http://localhost'), params('dep-awq-casper'));
+    expect((await ok.json()).id).toBe('dep-awq-casper');
 
     const missing = await GET(new Request('http://localhost'), params('missing'));
     expect(missing.status).toBe(404);
   });
 
   it('PUT updates deployment or returns 404', async () => {
-    const dep = sampleDeployment({ id: 'dep-qwen-32b', display_name: 'updated-name' });
+    const dep = sampleDeployment({ id: 'dep-awq-casper', display_name: 'updated-name' });
     const req = new NextRequest('http://localhost', {
       method: 'PUT',
       body: JSON.stringify(dep),
     });
-    const res = await PUT(req, params('dep-qwen-32b'));
+    const res = await PUT(req, params('dep-awq-casper'));
     expect((await res.json()).display_name).toBe('updated-name');
 
     const missingReq = new NextRequest('http://localhost', {
@@ -37,7 +37,7 @@ describe('/api/deployments/[id]', () => {
   });
 
   it('DELETE removes deployment', async () => {
-    const res = await DELETE(new Request('http://localhost'), params('dep-llama-8b'));
+    const res = await DELETE(new Request('http://localhost'), params('dep-llama-meta'));
     expect((await res.json()).deleted).toBe(true);
   });
 });

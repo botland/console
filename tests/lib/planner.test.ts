@@ -127,6 +127,33 @@ describe('deriveRecommendation', () => {
     expect(rec.gpus_per_instance).toBeGreaterThanOrEqual(2);
   });
 
+  it('caps context and warns when fp16 weights exceed target GPU', () => {
+    const config = minimalConfig({
+      nodes: [
+        {
+          id: 'node-worker',
+          hostname: 'kas',
+          ip: '192.168.1.144',
+          is_head: false,
+          gpus_reserved_for_system: 0,
+          labels: [],
+          status: 'online',
+          gpus: [{ index: 0, name: 'NVIDIA GeForce RTX 3070 Ti', vram_mb: 8 * 1024 }],
+        },
+      ],
+    });
+    const dep = sampleDeployment({
+      source: { type: 'huggingface', repo_id: 'deepseek-ai/deepseek-coder-6.7b-instruct' },
+      placement: {
+        mode: 'manual',
+        targets: [{ node_id: 'node-worker', gpu_indices: [0] }],
+      },
+    });
+    const rec = deriveRecommendation(dep, config);
+    expect(rec.context_length).toBe(512);
+    expect(rec.warnings.some((w) => w.includes('Model weights'))).toBe(true);
+  });
+
   it('handles reserved GPUs and auto scale preset', () => {
     const config = minimalConfig({
       nodes: [
