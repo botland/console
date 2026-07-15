@@ -74,6 +74,26 @@ export interface DeploymentPlacement {
 /** chat = completions; embedding = GPU /v1/embeddings for RAG */
 export type DeploymentRole = 'chat' | 'embedding';
 
+export interface CapabilityPack {
+  id: string;
+  description: string;
+  enabled: boolean;
+  pack: string;
+  pack_version: string;
+  mcp_server: string;
+  allowed_tools: string[];
+  docs: string;
+  health: { status: string; detail?: string };
+  configured: boolean;
+  configured_detail: string;
+  read_only: boolean;
+}
+
+export interface CapabilitiesResponse {
+  mcp_enabled: boolean;
+  capabilities: CapabilityPack[];
+}
+
 export interface DeploymentConfig {
   id: string;
   display_name: string;

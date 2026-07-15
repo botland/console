@@ -137,6 +137,16 @@ export async function getStorage() {
   return isInferedgeRuntime() ? inferedge.getStorage() : mock.getStorage();
 }
 
+export async function listCapabilities() {
+  return isInferedgeRuntime() ? inferedge.listCapabilities() : mock.listCapabilities();
+}
+
+export async function setCapabilityEnabled(id: string, enabled: boolean) {
+  return isInferedgeRuntime()
+    ? inferedge.setCapabilityEnabled(id, enabled)
+    : mock.setCapabilityEnabled(id, enabled);
+}
+
 export async function getGatewayStatus(): Promise<GatewayInfo> {
   return isInferedgeRuntime() ? inferedge.getGatewayStatus() : mock.getGatewayStatus();
 }

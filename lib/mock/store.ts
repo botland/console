@@ -598,6 +598,83 @@ export function getStorage() {
   return getState().storage_usage;
 }
 
+const MOCK_CAPABILITIES: import('@/lib/types').CapabilityPack[] = [
+  {
+    id: 'knowledge.search',
+    description: 'Read-only search and read over the appliance knowledge corpus',
+    enabled: true,
+    pack: 'knowledge_ro',
+    pack_version: '1.0.0',
+    mcp_server: 'knowledge_ro',
+    allowed_tools: ['knowledge_list', 'knowledge_search', 'knowledge_read'],
+    docs: 'Mock: corpus pack always on.',
+    health: { status: 'up', detail: 'mock' },
+    configured: true,
+    configured_detail: 'mock corpus',
+    read_only: true,
+  },
+  {
+    id: 'git.search',
+    description: 'Read-only Git tools',
+    enabled: false,
+    pack: 'git_ro',
+    pack_version: '1.0.0',
+    mcp_server: 'git_ro',
+    allowed_tools: ['git_list_refs', 'git_log', 'git_search', 'git_read_file'],
+    docs: 'Mount a repo at configs/mcp/repos.',
+    health: { status: 'up', detail: 'mock' },
+    configured: false,
+    configured_detail: 'no repo in mock',
+    read_only: true,
+  },
+  {
+    id: 's3.read',
+    description: 'Read-only S3 list/get',
+    enabled: false,
+    pack: 's3_ro',
+    pack_version: '1.0.0',
+    mcp_server: 's3_ro',
+    allowed_tools: ['s3_list_objects', 's3_get_object'],
+    docs: 'Set S3_BUCKET and AWS credentials.',
+    health: { status: 'up', detail: 'mock' },
+    configured: false,
+    configured_detail: 'not configured',
+    read_only: true,
+  },
+  {
+    id: 'sql.query',
+    description: 'Read-only SQL SELECT',
+    enabled: false,
+    pack: 'sql_ro',
+    pack_version: '1.0.0',
+    mcp_server: 'sql_ro',
+    allowed_tools: ['sql_list_tables', 'sql_query', 'sql_describe_table'],
+    docs: 'Set SQL_PATH to a sqlite file.',
+    health: { status: 'up', detail: 'mock' },
+    configured: false,
+    configured_detail: 'not configured',
+    read_only: true,
+  },
+];
+
+let mockCapabilityState = structuredClone(MOCK_CAPABILITIES);
+
+export function listCapabilities(): import('@/lib/types').CapabilitiesResponse {
+  return { mcp_enabled: true, capabilities: structuredClone(mockCapabilityState) };
+}
+
+export function setCapabilityEnabled(
+  id: string,
+  enabled: boolean,
+): import('@/lib/types').CapabilityPack {
+  const idx = mockCapabilityState.findIndex((c) => c.id === id);
+  if (idx < 0) {
+    throw new Error(`Unknown capability: ${id}`);
+  }
+  mockCapabilityState[idx] = { ...mockCapabilityState[idx], enabled };
+  return structuredClone(mockCapabilityState[idx]);
+}
+
 export function getLocalNodeId(): string {
   if (process.env.APPLIANCE_LOCAL_NODE_ID) {
     return process.env.APPLIANCE_LOCAL_NODE_ID;

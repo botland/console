@@ -165,6 +165,16 @@ export const api = {
       mounts: StorageMount[];
     }>('/api/storage'),
 
+  listCapabilities: () =>
+    fetchJson<import('@/lib/types').CapabilitiesResponse>('/api/capabilities'),
+
+  setCapabilityEnabled: (id: string, enabled: boolean) =>
+    fetchJson<import('@/lib/types').CapabilityPack>(`/api/capabilities/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled }),
+    }),
+
   addMount: (mount: Omit<StorageMount, 'id'>) =>
     fetchJson<StorageMount>('/api/storage/mounts', {
       method: 'POST',

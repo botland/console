@@ -267,6 +267,24 @@ export async function proxyWsStream(): Promise<Response> {
   });
 }
 
+export async function listCapabilities(): Promise<import('@/lib/types').CapabilitiesResponse> {
+  return controllerJson<import('@/lib/types').CapabilitiesResponse>('/capabilities');
+}
+
+export async function setCapabilityEnabled(
+  id: string,
+  enabled: boolean,
+): Promise<import('@/lib/types').CapabilityPack> {
+  return controllerJson<import('@/lib/types').CapabilityPack>(
+    `/capabilities/${encodeURIComponent(id)}`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled }),
+    },
+  );
+}
+
 export async function setConfig(config: unknown): Promise<ApplianceConfig> {
   const raw = await controllerJson<unknown>('/config', {
     method: 'PUT',
