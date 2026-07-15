@@ -8,6 +8,7 @@ export type ConsoleNavId =
   | 'nodes'
   | 'storage'
   | 'packs'
+  | 'workflows'
   | 'system'
   | 'support'
   | 'config';
@@ -42,9 +43,9 @@ export function visibleNavItems(ctx: ConsoleContext): ConsoleNavId[] {
 
   if (isStandalone(ctx.cluster) || isDistributedCoordinator(ctx)) {
     items.splice(1, 0, 'deployments');
-    // Packs (MCP capability enablement) only on head / standalone
+    // Packs + Workflows only on head / standalone
     const storageIdx = items.indexOf('storage');
-    items.splice(storageIdx + 1, 0, 'packs');
+    items.splice(storageIdx + 1, 0, 'packs', 'workflows');
     items.push('config');
   } else if (backend === 'federation') {
     items.splice(1, 0, 'deployments');
@@ -101,6 +102,7 @@ export const NAV_ROUTES: Record<ConsoleNavId, string> = {
   nodes: '/nodes',
   storage: '/storage',
   packs: '/packs',
+  workflows: '/workflows',
   system: '/system',
   support: '/support',
   config: '/config',

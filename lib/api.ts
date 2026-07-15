@@ -195,6 +195,45 @@ export const api = {
       body: JSON.stringify(rag),
     }),
 
+  listWorkflows: (tenant_id?: string) =>
+    fetchJson<{ workflows: import('@/lib/types').WorkflowRecord[] }>(
+      tenant_id
+        ? `/api/workflows?tenant_id=${encodeURIComponent(tenant_id)}`
+        : '/api/workflows',
+    ),
+
+  generateWorkflow: (body: {
+    prompt: string;
+    name?: string;
+    tenant_id?: string;
+    save_as_draft?: boolean;
+  }) =>
+    fetchJson<{
+      workflow?: import('@/lib/types').WorkflowRecord;
+      source: string;
+      saved: boolean;
+    }>('/api/workflows/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+
+  transitionWorkflow: (id: string, version: string, status: string, note = '') =>
+    fetchJson<import('@/lib/types').WorkflowVersion>(
+      `/api/workflows/${encodeURIComponent(id)}/versions/${encodeURIComponent(version)}/transition`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status, note }),
+      },
+    ),
+
+  dryRunWorkflow: (id: string, version: string) =>
+    fetchJson<import('@/lib/types').DryRunResult>(
+      `/api/workflows/${encodeURIComponent(id)}/versions/${encodeURIComponent(version)}/dry-run`,
+      { method: 'POST' },
+    ),
+
   addMount: (mount: Omit<StorageMount, 'id'>) =>
     fetchJson<StorageMount>('/api/storage/mounts', {
       method: 'POST',

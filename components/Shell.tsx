@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import {
   Box,
+  GitBranch,
   HardDrive,
   LayoutDashboard,
   Network,
@@ -36,6 +37,7 @@ const NAV_META: Record<
   nodes: { label: 'Nodes', icon: Server },
   storage: { label: 'Storage', icon: HardDrive },
   packs: { label: 'Packs', icon: Package },
+  workflows: { label: 'Workflows', icon: GitBranch },
   system: { label: 'System', icon: Settings },
   support: { label: 'Support', icon: LifeBuoy },
   config: { label: 'Config', icon: Sliders },

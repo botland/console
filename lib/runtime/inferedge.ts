@@ -310,6 +310,56 @@ export async function putPlatformRag(
   });
 }
 
+export async function listWorkflows(
+  tenant_id?: string,
+): Promise<{ workflows: import('@/lib/types').WorkflowRecord[] }> {
+  const q = tenant_id ? `?tenant_id=${encodeURIComponent(tenant_id)}` : '';
+  return controllerJson(`/workflows${q}`);
+}
+
+export async function generateWorkflow(body: {
+  prompt: string;
+  name?: string;
+  tenant_id?: string;
+  save_as_draft?: boolean;
+}): Promise<{
+  workflow?: import('@/lib/types').WorkflowRecord;
+  source: string;
+  saved: boolean;
+}> {
+  return controllerJson('/workflows/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+export async function transitionWorkflow(
+  id: string,
+  version: string,
+  status: string,
+  note = '',
+): Promise<import('@/lib/types').WorkflowVersion> {
+  return controllerJson(
+    `/workflows/${encodeURIComponent(id)}/versions/${encodeURIComponent(version)}/transition`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status, note }),
+    },
+  );
+}
+
+export async function dryRunWorkflow(
+  id: string,
+  version: string,
+): Promise<import('@/lib/types').DryRunResult> {
+  return controllerJson(
+    `/workflows/${encodeURIComponent(id)}/versions/${encodeURIComponent(version)}/dry-run`,
+    { method: 'POST' },
+  );
+}
+
 export async function setConfig(config: unknown): Promise<ApplianceConfig> {
   const raw = await controllerJson<unknown>('/config', {
     method: 'PUT',

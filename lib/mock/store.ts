@@ -727,6 +727,127 @@ export function putPlatformRag(
   return structuredClone(mockPlatform);
 }
 
+let mockWorkflows: import('@/lib/types').WorkflowRecord[] = [];
+
+export function listWorkflows(_tenant_id?: string): {
+  workflows: import('@/lib/types').WorkflowRecord[];
+} {
+  return { workflows: structuredClone(mockWorkflows) };
+}
+
+export function generateWorkflow(body: {
+  prompt: string;
+  name?: string;
+  tenant_id?: string;
+  save_as_draft?: boolean;
+}): {
+  workflow?: import('@/lib/types').WorkflowRecord;
+  source: string;
+  saved: boolean;
+} {
+  const id = `wf-mock-${Date.now()}`;
+  const version: import('@/lib/types').WorkflowVersion = {
+    workflow_id: id,
+    version: '1',
+    status: 'draft',
+    name: body.name || body.prompt.slice(0, 40) || 'Mock workflow',
+    description: 'Generated in mock mode',
+    definition: {
+      steps: [
+        {
+          id: 's1',
+          title: 'Retrieve knowledge',
+          kind: 'retrieval',
+          risk: 'low',
+          capability_id: 'knowledge.search',
+        },
+        {
+          id: 's2',
+          title: 'Draft answer',
+          kind: 'llm',
+          risk: 'low',
+        },
+      ],
+      edges: [{ source: 's1', target: 's2' }],
+      read_only: true,
+    },
+    source: 'template',
+    nl_prompt: body.prompt,
+    tenant_id: body.tenant_id || 'default',
+    created_at: new Date().toISOString(),
+  };
+  const rec: import('@/lib/types').WorkflowRecord = {
+    id,
+    tenant_id: body.tenant_id || 'default',
+    name: version.name,
+    description: version.description,
+    current_version: '1',
+    published_version: null,
+    created_at: version.created_at,
+    updated_at: version.created_at,
+    versions: [version],
+  };
+  if (body.save_as_draft !== false) {
+    mockWorkflows = [rec, ...mockWorkflows];
+    return { workflow: structuredClone(rec), source: 'template', saved: true };
+  }
+  return { source: 'template', saved: false };
+}
+
+export function transitionWorkflow(
+  id: string,
+  version: string,
+  status: string,
+  _note = '',
+): import('@/lib/types').WorkflowVersion {
+  const wf = mockWorkflows.find((w) => w.id === id);
+  if (!wf) throw new Error('Not found');
+  const ver = wf.versions.find((v) => v.version === version);
+  if (!ver) throw new Error('Version not found');
+  ver.status = status as import('@/lib/types').WorkflowStatus;
+  if (status === 'published') {
+    wf.published_version = version;
+    for (const v of wf.versions) {
+      if (v.version !== version && v.status === 'published') v.status = 'deprecated';
+    }
+  }
+  return structuredClone(ver);
+}
+
+export function dryRunWorkflow(
+  id: string,
+  version: string,
+): import('@/lib/types').DryRunResult {
+  const wf = mockWorkflows.find((w) => w.id === id);
+  const ver = wf?.versions.find((v) => v.version === version);
+  if (!ver) {
+    return {
+      ok: false,
+      workflow_id: id,
+      version,
+      errors: ['not found'],
+      warnings: [],
+      step_plan: [],
+      runtime: 'none',
+      detail: 'mock',
+    };
+  }
+  return {
+    ok: true,
+    workflow_id: id,
+    version,
+    errors: [],
+    warnings: [],
+    step_plan: ver.definition.steps.map((s) => ({
+      id: s.id,
+      title: s.title,
+      kind: s.kind,
+    })),
+    runtime: 'none',
+    detail: 'Mock dry-run — agent runtime is none',
+  };
+}
+
 export function getLocalNodeId(): string {
   if (process.env.APPLIANCE_LOCAL_NODE_ID) {
     return process.env.APPLIANCE_LOCAL_NODE_ID;

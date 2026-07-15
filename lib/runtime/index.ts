@@ -165,6 +165,36 @@ export async function putPlatformRag(rag: import('@/lib/types').RagConfig) {
   return isInferedgeRuntime() ? inferedge.putPlatformRag(rag) : mock.putPlatformRag(rag);
 }
 
+export async function listWorkflows(tenant_id?: string) {
+  return isInferedgeRuntime() ? inferedge.listWorkflows(tenant_id) : mock.listWorkflows(tenant_id);
+}
+
+export async function generateWorkflow(body: {
+  prompt: string;
+  name?: string;
+  tenant_id?: string;
+  save_as_draft?: boolean;
+}) {
+  return isInferedgeRuntime() ? inferedge.generateWorkflow(body) : mock.generateWorkflow(body);
+}
+
+export async function transitionWorkflow(
+  id: string,
+  version: string,
+  status: string,
+  note = '',
+) {
+  return isInferedgeRuntime()
+    ? inferedge.transitionWorkflow(id, version, status, note)
+    : mock.transitionWorkflow(id, version, status, note);
+}
+
+export async function dryRunWorkflow(id: string, version: string) {
+  return isInferedgeRuntime()
+    ? inferedge.dryRunWorkflow(id, version)
+    : mock.dryRunWorkflow(id, version);
+}
+
 export async function getGatewayStatus(): Promise<GatewayInfo> {
   return isInferedgeRuntime() ? inferedge.getGatewayStatus() : mock.getGatewayStatus();
 }

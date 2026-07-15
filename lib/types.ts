@@ -112,6 +112,74 @@ export interface RagConfig {
   hybrid_default: boolean;
 }
 
+export type WorkflowStatus = 'draft' | 'review' | 'published' | 'deprecated';
+
+export interface WorkflowStep {
+  id: string;
+  title: string;
+  kind: 'llm' | 'retrieval' | 'tool' | 'hitl' | 'note';
+  description?: string;
+  params?: Record<string, unknown>;
+  risk?: 'low' | 'medium' | 'high';
+  requires_hitl?: boolean;
+  tool_name?: string | null;
+  capability_id?: string | null;
+}
+
+export interface WorkflowGraph {
+  steps: WorkflowStep[];
+  edges: Array<{ source: string; target: string }>;
+  parameters?: Array<{
+    name: string;
+    label?: string;
+    type?: string;
+    default?: unknown;
+    min?: number;
+    max?: number;
+    description?: string;
+  }>;
+  read_only?: boolean;
+}
+
+export interface WorkflowVersion {
+  workflow_id: string;
+  version: string;
+  status: WorkflowStatus;
+  name: string;
+  description: string;
+  definition: WorkflowGraph;
+  source: 'nl' | 'manual' | 'template';
+  nl_prompt?: string;
+  tenant_id: string;
+  created_at: string;
+  created_by?: string | null;
+  published_at?: string | null;
+}
+
+export interface WorkflowRecord {
+  id: string;
+  tenant_id: string;
+  name: string;
+  description: string;
+  current_version: string | null;
+  published_version: string | null;
+  created_at: string;
+  updated_at: string;
+  created_by?: string | null;
+  versions: WorkflowVersion[];
+}
+
+export interface DryRunResult {
+  ok: boolean;
+  workflow_id: string;
+  version: string;
+  errors: string[];
+  warnings: string[];
+  step_plan: Array<Record<string, unknown>>;
+  runtime: string;
+  detail: string;
+}
+
 export interface PlatformSnapshot {
   tenant_id: string;
   rag: RagConfig;
