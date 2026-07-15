@@ -24,6 +24,7 @@ function emptyDeployment(_nodes: NodeConfig[]): DeploymentConfig {
     id: `dep-${Date.now()}`,
     display_name: '',
     enabled: true,
+    role: 'chat',
     source: { type: 'huggingface', repo_id: '' },
     user_intent: { performance_goal: 'balanced', scale: 'medium' },
     parallelism: {
@@ -36,6 +37,37 @@ function emptyDeployment(_nodes: NodeConfig[]): DeploymentConfig {
       autoscaling: null,
     },
     status: 'reconciling',
+  };
+}
+
+function applyRoleDefaults(
+  dep: DeploymentConfig,
+  role: 'chat' | 'embedding',
+): DeploymentConfig {
+  if (role === 'embedding') {
+    return {
+      ...dep,
+      role,
+      parallelism: {
+        ...dep.parallelism,
+        // Embedding models: short context, modest VRAM share by default
+        context_length: Math.min(dep.parallelism.context_length, 512) || 512,
+        gpu_utilization: 0.3,
+      },
+    };
+  }
+  return {
+    ...dep,
+    role,
+    parallelism: {
+      ...dep.parallelism,
+      context_length:
+        dep.parallelism.context_length < 1024 ? 8192 : dep.parallelism.context_length,
+      gpu_utilization:
+        (dep.parallelism.gpu_utilization ?? 0.85) < 0.5
+          ? 0.85
+          : dep.parallelism.gpu_utilization,
+    },
   };
 }
 
@@ -269,6 +301,26 @@ export function DeploymentForm({
             placeholder="my-company-llama-8b"
           />
           </FieldLabel>
+        </div>
+        <div>
+          <Label>Role</Label>
+          <Select
+            value={dep.role ?? 'chat'}
+            onChange={(e) => {
+              const role = e.target.value as 'chat' | 'embedding';
+              setDep(applyRoleDefaults(dep, role));
+            }}
+          >
+            <option value="chat">Chat / completions</option>
+            <option value="embedding">Embedding (RAG /v1/embeddings)</option>
+          </Select>
+          {dep.role === 'embedding' && (
+            <p className="mt-1 text-xs text-slate-500">
+              Serves LiteLLM <code className="text-slate-400">embedding</code> alias.
+              Set retrieval <code className="text-slate-400">EMBEDDING_MODEL=embedding</code>{' '}
+              (or this display name), then reindex.
+            </p>
+          )}
         </div>
         <div>
           <Label>Source type</Label>

@@ -71,10 +71,15 @@ export interface DeploymentPlacement {
   targets?: DeploymentPlacementTarget[];
 }
 
+/** chat = completions; embedding = GPU /v1/embeddings for RAG */
+export type DeploymentRole = 'chat' | 'embedding';
+
 export interface DeploymentConfig {
   id: string;
   display_name: string;
   enabled: boolean;
+  /** Defaults to chat when omitted (backward compatible). */
+  role?: DeploymentRole;
   source: ModelSource;
   user_intent: {
     performance_goal: PerformanceGoal;

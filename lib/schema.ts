@@ -41,6 +41,7 @@ const deploymentSchema = z.object({
   id: z.string(),
   display_name: z.string().min(1),
   enabled: z.boolean(),
+  role: z.enum(['chat', 'embedding']).optional(),
   source: sourceSchema,
   user_intent: z.object({
     performance_goal: z.enum(['balanced', 'max_throughput', 'low_latency', 'high_availability']),
@@ -52,6 +53,7 @@ const deploymentSchema = z.object({
     instances: z.number().min(1),
     gpus_per_instance: z.number().min(1),
     nodes_per_instance: z.number().min(1),
+    gpu_utilization: z.number().min(0.05).max(1).optional(),
     autoscaling: z
       .object({
         min_instances: z.number().min(1),
