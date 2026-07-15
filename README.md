@@ -69,7 +69,7 @@ Simulated agents on every node push GPU telemetry to the head coordinator every 
 
 ```bash
 # Run as worker node (proxies to coordinator console via HEAD_CONSOLE_URL)
-APPLIANCE_LOCAL_NODE_ID=node-1 HEAD_CONSOLE_URL=http://10.0.0.2/api npm run dev
+APPLIANCE_LOCAL_NODE_ID=node-1 HEAD_CONSOLE_URL=http://10.0.0.2/console/api npm run dev
 
 # Optional overrides
 APPLIANCE_HEAD_INTERNAL_URL=http://127.0.0.1:3000   # proxy target (dev)
@@ -89,7 +89,7 @@ cp .env.example .env
 ./scripts/compose.sh up -d --build
 ```
 
-Open [http://localhost/](http://localhost/) (Traefik → console). Management API: [http://localhost/api/status](http://localhost/api/status).
+Open [http://localhost/console](http://localhost/console) (Traefik → management console). Chat UI: [http://localhost/](http://localhost/) (OpenWebUI). Management API: [http://localhost/console/api/status](http://localhost/console/api/status).
 
 ### Local dev (console + controller separately)
 

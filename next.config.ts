@@ -2,8 +2,8 @@ import type { NextConfig } from 'next';
 import path from 'path';
 
 /**
- * Real appliances: leave CONSOLE_BASE_PATH unset → console at `/`.
- * Marketing demo only: CONSOLE_BASE_PATH=/demo (b2b.ownedge.ai/demo).
+ * Real appliances: CONSOLE_BASE_PATH=/console (OpenWebUI at `/`).
+ * Marketing demo: CONSOLE_BASE_PATH=/demo (b2b.ownedge.ai/demo).
  * NEXT_PUBLIC_BASE_PATH is inlined for client fetch() — Next does not auto-prefix fetch.
  */
 const basePath = process.env.CONSOLE_BASE_PATH || '';

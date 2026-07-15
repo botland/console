@@ -225,10 +225,11 @@ export async function exportConfigResponse(): Promise<Response> {
 }
 
 export async function getGatewayStatus(): Promise<GatewayInfo> {
+  const { getConsoleApiPath, toManagementApiBase } = await import('@/lib/console-api-path');
   const raw = await controllerJson<InferedgeStatusResponse>('/status');
   if (raw.gateway) {
     const headApiUrl = process.env.APPLIANCE_HEAD_INTERNAL_URL
-      ? `${process.env.APPLIANCE_HEAD_INTERNAL_URL.replace(/\/$/, '')}/api`
+      ? toManagementApiBase(process.env.APPLIANCE_HEAD_INTERNAL_URL.replace(/\/$/, ''))
       : raw.gateway.head_api_url;
     return { ...raw.gateway, head_api_url: headApiUrl };
   }
@@ -237,10 +238,15 @@ export async function getGatewayStatus(): Promise<GatewayInfo> {
   const headIp = raw.head?.head_ip ?? '127.0.0.1';
   const localNodeId = process.env.APPLIANCE_LOCAL_NODE_ID ?? '';
   const isHead = localNodeId !== '' && localNodeId === raw.head?.head_node_id;
+  const path = getConsoleApiPath();
+  const head_api_url =
+    port === '80' || port === '443'
+      ? `http://${headIp}${path}`
+      : `http://${headIp}:${port}${path}`;
   return {
     local_node_id: localNodeId,
     is_head: isHead,
-    head_api_url: `http://${headIp}:${port}/api`,
+    head_api_url,
   };
 }
 

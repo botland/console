@@ -1,11 +1,14 @@
 /**
- * Public path prefix when the console is hosted under a subpath (e.g. marketing demo at /demo).
+ * Public path prefix when the console is hosted under a subpath.
  *
- * Real appliances serve the console at `/` with no base path — leave unset / empty.
- * Demo builds set CONSOLE_BASE_PATH=/demo (also exposed as NEXT_PUBLIC_BASE_PATH via next.config).
+ * Real appliances: CONSOLE_BASE_PATH=/console (OpenWebUI owns `/`).
+ * Marketing demo: CONSOLE_BASE_PATH=/demo (b2b.ownedge.ai/demo).
+ * Also exposed as NEXT_PUBLIC_BASE_PATH via next.config for client fetch().
  *
  * Next.js basePath rewrites <Link> and router automatically, but raw fetch() / EventSource
  * must prefix paths themselves. Always use withBasePath() for absolute app paths.
+ *
+ * External management API remains at host `/api/*` (Traefik rewrites to `/console/api/*`).
  */
 export function getBasePath(): string {
   const raw =

@@ -356,7 +356,7 @@ export function joinCluster(
   startReconcile('Joined cluster — rescheduling workloads');
   return {
     ...orchestrationPutResponse(cluster),
-    coordinator_console_url: `http://${headNode.ip}`,
+    coordinator_console_url: `http://${headNode.ip}/console`,
   };
 }
 
@@ -582,10 +582,15 @@ export function getGatewayStatus(): GatewayInfo {
   const base =
     process.env.APPLIANCE_HEAD_INTERNAL_URL?.replace(/\/$/, '') ??
     `http://${config.system.network.head_ip}:${port}`;
+  // OpenWebUI owns host /api; management API is under console basePath.
+  const apiPath =
+    process.env.NEXT_PUBLIC_BASE_PATH || process.env.CONSOLE_BASE_PATH
+      ? `${(process.env.NEXT_PUBLIC_BASE_PATH || process.env.CONSOLE_BASE_PATH || '/console').replace(/\/$/, '')}/api`
+      : '/console/api';
   return {
     local_node_id: getLocalNodeId(),
     is_head: isHeadCoordinator(),
-    head_api_url: `${base}/api`,
+    head_api_url: base.endsWith('/api') ? base : `${base}${apiPath.startsWith('/') ? apiPath : `/${apiPath}`}`,
   };
 }
 

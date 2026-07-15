@@ -300,7 +300,7 @@ describe('mock store', () => {
 
   it('uses APPLIANCE_HEAD_INTERNAL_URL when set', () => {
     process.env.APPLIANCE_HEAD_INTERNAL_URL = 'http://head-internal:3000/';
-    expect(getGatewayStatus().head_api_url).toBe('http://head-internal:3000/api');
+    expect(getGatewayStatus().head_api_url).toBe('http://head-internal:3000/console/api');
     delete process.env.APPLIANCE_HEAD_INTERNAL_URL;
   });
 

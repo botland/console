@@ -33,7 +33,7 @@ export type StatusResponse = ApplianceStatus & {
 };
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
-  // withBasePath: no-op on real appliances (basePath empty); prefixes /demo in marketing demo.
+  // withBasePath: prefixes /console on appliances (or /demo in marketing builds).
   const res = await fetch(withBasePath(url), init);
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
