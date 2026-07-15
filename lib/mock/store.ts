@@ -660,12 +660,18 @@ const MOCK_CAPABILITIES: import('@/lib/types').CapabilityPack[] = [
 let mockCapabilityState = structuredClone(MOCK_CAPABILITIES);
 
 export function listCapabilities(): import('@/lib/types').CapabilitiesResponse {
-  return { mcp_enabled: true, capabilities: structuredClone(mockCapabilityState) };
+  return {
+    mcp_enabled: true,
+    tenant_id: mockPlatform.tenant_id,
+    allow_rw_capabilities: false,
+    capabilities: structuredClone(mockCapabilityState),
+  };
 }
 
 export function setCapabilityEnabled(
   id: string,
   enabled: boolean,
+  _extra?: { access_mode?: 'ro' | 'rw'; ack_message?: string },
 ): import('@/lib/types').CapabilityPack {
   const idx = mockCapabilityState.findIndex((c) => c.id === id);
   if (idx < 0) {
@@ -673,6 +679,52 @@ export function setCapabilityEnabled(
   }
   mockCapabilityState[idx] = { ...mockCapabilityState[idx], enabled };
   return structuredClone(mockCapabilityState[idx]);
+}
+
+let mockPlatform: import('@/lib/types').PlatformSnapshot = {
+  tenant_id: 'default',
+  rag: {
+    version: '1',
+    tenant_id: 'default',
+    embedding_model_id: '',
+    embedding_dim: 384,
+    chunker_version: 'plain-v1',
+    default_corpus_id: 'appliance',
+    hybrid_default: true,
+  },
+  prompts: [],
+  acl: {
+    version: '1',
+    tenant_id: 'default',
+    group_capabilities: {},
+    rw_admin_roles: ['appliance-admin'],
+    sso_enabled: false,
+    notes: 'Mock ACL — SSO not enabled.',
+  },
+  grants: [],
+  allow_rw_capabilities: false,
+  agent_runtime: 'none',
+  versions: [],
+};
+
+export function getPlatform(): import('@/lib/types').PlatformSnapshot {
+  return structuredClone(mockPlatform);
+}
+
+export function putPlatformTenant(tenant_id: string): import('@/lib/types').PlatformSnapshot {
+  mockPlatform = {
+    ...mockPlatform,
+    tenant_id,
+    rag: { ...mockPlatform.rag, tenant_id },
+  };
+  return structuredClone(mockPlatform);
+}
+
+export function putPlatformRag(
+  rag: import('@/lib/types').RagConfig,
+): import('@/lib/types').PlatformSnapshot {
+  mockPlatform = { ...mockPlatform, rag, tenant_id: rag.tenant_id || mockPlatform.tenant_id };
+  return structuredClone(mockPlatform);
 }
 
 export function getLocalNodeId(): string {

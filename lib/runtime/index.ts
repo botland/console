@@ -141,10 +141,28 @@ export async function listCapabilities() {
   return isInferedgeRuntime() ? inferedge.listCapabilities() : mock.listCapabilities();
 }
 
-export async function setCapabilityEnabled(id: string, enabled: boolean) {
+export async function setCapabilityEnabled(
+  id: string,
+  enabled: boolean,
+  extra?: { access_mode?: 'ro' | 'rw'; ack_message?: string },
+) {
   return isInferedgeRuntime()
-    ? inferedge.setCapabilityEnabled(id, enabled)
-    : mock.setCapabilityEnabled(id, enabled);
+    ? inferedge.setCapabilityEnabled(id, enabled, extra)
+    : mock.setCapabilityEnabled(id, enabled, extra);
+}
+
+export async function getPlatform() {
+  return isInferedgeRuntime() ? inferedge.getPlatform() : mock.getPlatform();
+}
+
+export async function putPlatformTenant(tenant_id: string) {
+  return isInferedgeRuntime()
+    ? inferedge.putPlatformTenant(tenant_id)
+    : mock.putPlatformTenant(tenant_id);
+}
+
+export async function putPlatformRag(rag: import('@/lib/types').RagConfig) {
+  return isInferedgeRuntime() ? inferedge.putPlatformRag(rag) : mock.putPlatformRag(rag);
 }
 
 export async function getGatewayStatus(): Promise<GatewayInfo> {

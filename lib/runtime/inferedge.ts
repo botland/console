@@ -274,15 +274,40 @@ export async function listCapabilities(): Promise<import('@/lib/types').Capabili
 export async function setCapabilityEnabled(
   id: string,
   enabled: boolean,
+  extra?: { access_mode?: 'ro' | 'rw'; ack_message?: string },
 ): Promise<import('@/lib/types').CapabilityPack> {
   return controllerJson<import('@/lib/types').CapabilityPack>(
     `/capabilities/${encodeURIComponent(id)}`,
     {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled }),
+      body: JSON.stringify({ enabled, ...extra }),
     },
   );
+}
+
+export async function getPlatform(): Promise<import('@/lib/types').PlatformSnapshot> {
+  return controllerJson<import('@/lib/types').PlatformSnapshot>('/platform');
+}
+
+export async function putPlatformTenant(
+  tenant_id: string,
+): Promise<import('@/lib/types').PlatformSnapshot> {
+  return controllerJson<import('@/lib/types').PlatformSnapshot>('/platform/tenant', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tenant_id }),
+  });
+}
+
+export async function putPlatformRag(
+  rag: import('@/lib/types').RagConfig,
+): Promise<import('@/lib/types').PlatformSnapshot> {
+  return controllerJson<import('@/lib/types').PlatformSnapshot>('/platform/rag', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(rag),
+  });
 }
 
 export async function setConfig(config: unknown): Promise<ApplianceConfig> {

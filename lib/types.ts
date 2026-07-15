@@ -87,11 +87,69 @@ export interface CapabilityPack {
   configured: boolean;
   configured_detail: string;
   read_only: boolean;
+  access_modes?: string[];
+  tenant_id?: string;
+  access_mode?: 'ro' | 'rw';
+  grant_enabled?: boolean;
+  requires_hitl?: boolean;
+  rw_blocked_reason?: string | null;
 }
 
 export interface CapabilitiesResponse {
   mcp_enabled: boolean;
+  tenant_id?: string;
+  allow_rw_capabilities?: boolean;
   capabilities: CapabilityPack[];
+}
+
+export interface RagConfig {
+  version: string;
+  tenant_id: string;
+  embedding_model_id: string;
+  embedding_dim: number;
+  chunker_version: string;
+  default_corpus_id: string;
+  hybrid_default: boolean;
+}
+
+export interface PlatformSnapshot {
+  tenant_id: string;
+  rag: RagConfig;
+  prompts: Array<{
+    id: string;
+    version: string;
+    title: string;
+    body: string;
+    tenant_id: string;
+    tags: string[];
+  }>;
+  acl: {
+    version: string;
+    tenant_id: string;
+    group_capabilities: Record<string, string[]>;
+    rw_admin_roles: string[];
+    sso_enabled: boolean;
+    notes: string;
+  };
+  grants: Array<{
+    capability_id: string;
+    access_mode: 'ro' | 'rw';
+    enabled: boolean;
+    requires_hitl: boolean;
+    granted_by?: string | null;
+    granted_at?: string | null;
+    ack_message?: string | null;
+  }>;
+  allow_rw_capabilities: boolean;
+  agent_runtime: string;
+  versions: Array<{
+    id: number;
+    kind: string;
+    version: string;
+    payload: unknown;
+    created_at: string;
+    created_by?: string | null;
+  }>;
 }
 
 export interface DeploymentConfig {

@@ -168,11 +168,31 @@ export const api = {
   listCapabilities: () =>
     fetchJson<import('@/lib/types').CapabilitiesResponse>('/api/capabilities'),
 
-  setCapabilityEnabled: (id: string, enabled: boolean) =>
+  setCapabilityEnabled: (
+    id: string,
+    enabled: boolean,
+    extra?: { access_mode?: 'ro' | 'rw'; ack_message?: string },
+  ) =>
     fetchJson<import('@/lib/types').CapabilityPack>(`/api/capabilities/${encodeURIComponent(id)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled }),
+      body: JSON.stringify({ enabled, ...extra }),
+    }),
+
+  getPlatform: () => fetchJson<import('@/lib/types').PlatformSnapshot>('/api/platform'),
+
+  putPlatformTenant: (tenant_id: string) =>
+    fetchJson<import('@/lib/types').PlatformSnapshot>('/api/platform/tenant', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tenant_id }),
+    }),
+
+  putPlatformRag: (rag: import('@/lib/types').RagConfig) =>
+    fetchJson<import('@/lib/types').PlatformSnapshot>('/api/platform/rag', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(rag),
     }),
 
   addMount: (mount: Omit<StorageMount, 'id'>) =>
