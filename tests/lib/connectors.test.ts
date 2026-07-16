@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
-  CONNECTOR_DEFS,
-  connectionStatus,
+  SOURCE_TYPES,
+  createInstance,
   enableConfirmMessage,
+  instanceConfigComplete,
+  instanceStatus,
   lookupCapability,
+  seedInstancesFromPacks,
   trustLabel,
   unmappedCapabilities,
 } from '@/lib/connectors';
@@ -26,30 +29,102 @@ function pack(partial: Partial<CapabilityPack> & { id: string }): CapabilityPack
   };
 }
 
-describe('connectors presentation', () => {
-  it('maps capabilities to connectors (packs stay internal)', () => {
+describe('source types and instances', () => {
+  it('maps capabilities to source types (packs stay internal)', () => {
     const hit = lookupCapability('knowledge.search');
     expect(hit?.connector.id).toBe('appliance-knowledge');
     expect(hit?.permission.trust).toBe('read');
     expect(lookupCapability('sql.query')?.connector.id).toBe('postgresql');
   });
 
-  it('treats PostgreSQL as a primary application source', () => {
-    const pg = CONNECTOR_DEFS.find((c) => c.id === 'postgresql');
+  it('treats PostgreSQL and GitHub as multi-instance application sources', () => {
+    const pg = SOURCE_TYPES.find((c) => c.id === 'postgresql');
+    const gh = SOURCE_TYPES.find((c) => c.id === 'github');
     expect(pg?.section).toBe('apps');
+    expect(pg?.multiInstance).toBe(true);
     expect(pg?.advancedOnly).toBeFalsy();
-    expect(lookupCapability('sql.query')?.connector.id).toBe('postgresql');
+    expect(gh?.multiInstance).toBe(true);
+    expect(pg?.configFields.some((f) => f.key === 'password' && f.secret)).toBe(true);
   });
 
-  it('computes connection status from enabled permissions', () => {
-    const packs = [
+  it('requires connection fields before an instance is complete', () => {
+    const pg = SOURCE_TYPES.find((c) => c.id === 'postgresql')!;
+    expect(instanceConfigComplete(pg, {})).toBe(false);
+    expect(
+      instanceConfigComplete(pg, {
+        host: 'db.local',
+        database: 'app',
+        username: 'ro',
+        password: 'secret',
+      }),
+    ).toBe(true);
+  });
+
+  it('allows multiple named instances of the same type', () => {
+    const pg = SOURCE_TYPES.find((c) => c.id === 'postgresql')!;
+    const a = createInstance(pg, {
+      displayName: 'Prod analytics RO',
+      packBound: true,
+      config: {
+        host: 'a',
+        database: 'analytics',
+        username: 'ro',
+        password: 'x',
+      },
+    });
+    const b = createInstance(pg, {
+      displayName: 'HR DB RO',
+      packBound: false,
+      config: {
+        host: 'b',
+        database: 'hr',
+        username: 'ro',
+        password: 'y',
+      },
+      groups: ['Analysts'],
+    });
+    expect(a.typeId).toBe(b.typeId);
+    expect(a.id).not.toBe(b.id);
+    expect(a.displayName).not.toBe(b.displayName);
+    expect(b.groups).toEqual(['Analysts']);
+    expect(b.packBound).toBe(false);
+  });
+
+  it('computes instance status from config and pack health', () => {
+    const gitType = SOURCE_TYPES.find((c) => c.id === 'github')!;
+    const connectedPacks = [
       pack({ id: 'git.search', enabled: true, configured: true, health: { status: 'up' } }),
     ];
-    const git = CONNECTOR_DEFS.find((c) => c.id === 'git')!;
-    expect(connectionStatus(packs, git)).toBe('connected');
-    expect(connectionStatus([pack({ id: 'git.search', enabled: false, configured: true })], git)).toBe(
-      'ready',
-    );
+    const inst = createInstance(gitType, {
+      packBound: true,
+      config: { owner: 'acme', token: '••••' },
+    });
+    inst.enabledPermissionIds = ['read'];
+    expect(instanceStatus(inst, connectedPacks, gitType)).toBe('connected');
+
+    // Pack configured but permission not enabled → ready
+    const readyPacks = [
+      pack({ id: 'git.search', enabled: false, configured: true, health: { status: 'up' } }),
+    ];
+    const empty = createInstance(gitType, { packBound: true, config: {} });
+    expect(instanceStatus(empty, readyPacks, gitType)).toBe('ready');
+
+    // Unconfigured pack + empty form → needs setup
+    const unconfiguredPacks = [
+      pack({ id: 'git.search', enabled: false, configured: false }),
+    ];
+    expect(instanceStatus(empty, unconfiguredPacks, gitType)).toBe('needs_setup');
+  });
+
+  it('seeds builtin knowledge from packs', () => {
+    const packs = [
+      pack({ id: 'knowledge.search', enabled: true }),
+      pack({ id: 'git.search', enabled: false, configured: false }),
+    ];
+    const seeded = seedInstancesFromPacks(packs);
+    const knowledge = seeded.find((i) => i.typeId === 'appliance-knowledge');
+    expect(knowledge?.packBound).toBe(true);
+    expect(knowledge?.enabledPermissionIds).toContain('read');
   });
 
   it('requires confirm copy for non-read enables', () => {
