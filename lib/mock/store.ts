@@ -598,10 +598,13 @@ export function getStorage() {
   return getState().storage_usage;
 }
 
+const _RO_INTENT =
+  'Uses this data to answer questions. Does not change anything.';
+
 const MOCK_CAPABILITIES: import('@/lib/types').CapabilityPack[] = [
   {
     id: 'knowledge.search',
-    description: 'Read-only search and read over the appliance knowledge corpus',
+    description: 'Answers questions from the appliance knowledge corpus',
     enabled: true,
     pack: 'knowledge_ro',
     pack_version: '1.0.0',
@@ -612,10 +615,14 @@ const MOCK_CAPABILITIES: import('@/lib/types').CapabilityPack[] = [
     configured: true,
     configured_detail: 'mock corpus',
     read_only: true,
+    intent_summary: _RO_INTENT,
+    approval_required: false,
+    changes_need_approval: false,
+    policy_valid: true,
   },
   {
     id: 'git.search',
-    description: 'Read-only Git tools',
+    description: 'Answers questions from a Git repository',
     enabled: false,
     pack: 'git_ro',
     pack_version: '1.0.0',
@@ -626,10 +633,14 @@ const MOCK_CAPABILITIES: import('@/lib/types').CapabilityPack[] = [
     configured: false,
     configured_detail: 'no repo in mock',
     read_only: true,
+    intent_summary: _RO_INTENT,
+    approval_required: false,
+    changes_need_approval: false,
+    policy_valid: true,
   },
   {
     id: 's3.read',
-    description: 'Read-only S3 list/get',
+    description: 'Lists and reads objects from an S3-compatible bucket',
     enabled: false,
     pack: 's3_ro',
     pack_version: '1.0.0',
@@ -640,10 +651,14 @@ const MOCK_CAPABILITIES: import('@/lib/types').CapabilityPack[] = [
     configured: false,
     configured_detail: 'not configured',
     read_only: true,
+    intent_summary: _RO_INTENT,
+    approval_required: false,
+    changes_need_approval: false,
+    policy_valid: true,
   },
   {
     id: 'sql.query',
-    description: 'Read-only SQL SELECT',
+    description: 'Runs read-only SQL (SELECT) against a mounted database',
     enabled: false,
     pack: 'sql_ro',
     pack_version: '1.0.0',
@@ -654,10 +669,80 @@ const MOCK_CAPABILITIES: import('@/lib/types').CapabilityPack[] = [
     configured: false,
     configured_detail: 'not configured',
     read_only: true,
+    intent_summary: _RO_INTENT,
+    approval_required: false,
+    changes_need_approval: false,
+    policy_valid: true,
+  },
+  {
+    id: 'knowledge.propose_edit',
+    description: 'AI can propose documentation edits. Changes need your approval before they apply.',
+    enabled: false,
+    pack: 'knowledge_propose',
+    pack_version: '1.0.0',
+    mcp_server: 'knowledge_propose',
+    allowed_tools: [
+      'knowledge_prepare_patch',
+      'knowledge_preview_patch',
+      'knowledge_list_pending',
+    ],
+    docs: 'Staging corpus only. Prepare via AI; Apply under Pending changes.',
+    health: { status: 'up', detail: 'mock' },
+    configured: true,
+    configured_detail: 'mock staging',
+    read_only: false,
+    intent_summary: 'Can propose changes. Nothing is applied without your approval.',
+    approval_required: true,
+    changes_need_approval: true,
+    policy_valid: true,
+  },
+  {
+    id: 'notes.create',
+    description: 'AI can create new draft notes. Existing documents are never modified.',
+    enabled: false,
+    pack: 'notes_create',
+    pack_version: '1.0.0',
+    mcp_server: 'notes_create',
+    allowed_tools: ['note_create_draft', 'note_list_drafts'],
+    docs: 'Creates new files under staging/drafts/ only.',
+    health: { status: 'up', detail: 'mock' },
+    configured: true,
+    configured_detail: 'mock drafts',
+    read_only: false,
+    intent_summary: 'Can create new items. Changes may be applied according to pack rules.',
+    approval_required: false,
+    changes_need_approval: false,
+    policy_valid: true,
+  },
+  {
+    id: 'knowledge.propose_archive',
+    description:
+      'AI can propose moving staging files to trash. Always needs your confirmation. Not permanent delete.',
+    enabled: false,
+    pack: 'knowledge_propose',
+    pack_version: '1.0.0',
+    mcp_server: 'knowledge_propose',
+    allowed_tools: [
+      'knowledge_prepare_archive',
+      'knowledge_preview_patch',
+      'knowledge_list_pending',
+    ],
+    docs: 'Soft-archive only. Apply under Pending changes. Rollback supported.',
+    health: { status: 'up', detail: 'mock' },
+    configured: true,
+    configured_detail: 'mock staging',
+    read_only: false,
+    intent_summary:
+      'Can propose high-impact or delete actions. Always needs your confirmation.',
+    approval_required: true,
+    changes_need_approval: true,
+    policy_valid: true,
   },
 ];
 
 let mockCapabilityState = structuredClone(MOCK_CAPABILITIES);
+
+let mockPendingChanges: import('@/lib/types').PendingChange[] = [];
 
 export function listCapabilities(): import('@/lib/types').CapabilitiesResponse {
   return {
@@ -666,6 +751,68 @@ export function listCapabilities(): import('@/lib/types').CapabilitiesResponse {
     allow_rw_capabilities: false,
     capabilities: structuredClone(mockCapabilityState),
   };
+}
+
+export function listPendingChanges(
+  status = 'pending',
+): { mutations: import('@/lib/types').PendingChange[]; count: number } {
+  const filtered =
+    status && status !== 'all' && status !== '*'
+      ? mockPendingChanges.filter((m) => m.status === status)
+      : mockPendingChanges;
+  return { mutations: structuredClone(filtered), count: filtered.length };
+}
+
+export function applyPendingChange(
+  id: string,
+  body: { preview_checksum: string; ack: string },
+): import('@/lib/types').PendingChange {
+  const idx = mockPendingChanges.findIndex((m) => m.mutation_id === id);
+  if (idx < 0) throw new Error('Unknown pending change');
+  const m = mockPendingChanges[idx];
+  if (m.status === 'committed') {
+    return { ...structuredClone(m), idempotent_replay: true };
+  }
+  if (m.status !== 'pending') throw new Error(`Cannot apply status ${m.status}`);
+  if (!body.ack?.trim()) throw new Error('Confirmation required');
+  if (body.preview_checksum !== m.preview_checksum) throw new Error('Preview checksum mismatch');
+  mockPendingChanges[idx] = {
+    ...m,
+    status: 'committed',
+    committed_at: new Date().toISOString(),
+    commit_actor: 'mock',
+    rollback_ref: `noop:${id}`,
+  };
+  return { ...structuredClone(mockPendingChanges[idx]), idempotent_replay: false };
+}
+
+export function discardPendingChange(id: string): import('@/lib/types').PendingChange {
+  const idx = mockPendingChanges.findIndex((m) => m.mutation_id === id);
+  if (idx < 0) throw new Error('Unknown pending change');
+  mockPendingChanges[idx] = { ...mockPendingChanges[idx], status: 'cancelled' };
+  return structuredClone(mockPendingChanges[idx]);
+}
+
+/** Test helper: seed a pending change in mock mode. */
+export function mockSeedPendingChange(
+  partial?: Partial<import('@/lib/types').PendingChange>,
+): import('@/lib/types').PendingChange {
+  const id = partial?.mutation_id ?? `mock-mut-${mockPendingChanges.length + 1}`;
+  const row: import('@/lib/types').PendingChange = {
+    capability_id: 'knowledge.propose_edit',
+    title: 'Mock documentation edits',
+    summary: 'AI prepared 2 documentation edits',
+    preview_text: 'Update getting-started.txt',
+    preview: { items: [{ path: 'getting-started.txt' }] },
+    preview_checksum: 'sha256:mock',
+    created_at: new Date().toISOString(),
+    changes_need_approval: true,
+    ...partial,
+    mutation_id: id,
+    status: partial?.status ?? 'pending',
+  };
+  mockPendingChanges = [...mockPendingChanges.filter((m) => m.mutation_id !== id), row];
+  return structuredClone(row);
 }
 
 export function setCapabilityEnabled(
@@ -879,6 +1026,8 @@ export function resetTestState(options?: {
   stopAgentSimulation();
   wsListeners.clear();
   memoryState = null;
+  mockPendingChanges = [];
+  mockCapabilityState = structuredClone(MOCK_CAPABILITIES);
   const stateFile = getStateFile();
   if (clearDisk && fs.existsSync(stateFile)) {
     fs.unlinkSync(stateFile);

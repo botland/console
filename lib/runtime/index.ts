@@ -141,6 +141,27 @@ export async function listCapabilities() {
   return isInferedgeRuntime() ? inferedge.listCapabilities() : mock.listCapabilities();
 }
 
+export async function listPendingChanges(status = 'pending') {
+  return isInferedgeRuntime()
+    ? inferedge.listPendingChanges(status)
+    : mock.listPendingChanges(status);
+}
+
+export async function applyPendingChange(
+  id: string,
+  body: { preview_checksum: string; ack: string },
+) {
+  return isInferedgeRuntime()
+    ? inferedge.applyPendingChange(id, body)
+    : mock.applyPendingChange(id, body);
+}
+
+export async function discardPendingChange(id: string) {
+  return isInferedgeRuntime()
+    ? inferedge.discardPendingChange(id)
+    : mock.discardPendingChange(id);
+}
+
 export async function setCapabilityEnabled(
   id: string,
   enabled: boolean,

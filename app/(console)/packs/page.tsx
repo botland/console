@@ -6,7 +6,13 @@ import { Package, Shield } from 'lucide-react';
 import { PageState } from '@/components/PageState';
 import { Button, Card, Input, Label, PageHeader } from '@/components/ui';
 import { api, ApiError } from '@/lib/api';
-import type { CapabilitiesResponse, CapabilityPack, PlatformSnapshot, RagConfig } from '@/lib/types';
+import type {
+  CapabilitiesResponse,
+  CapabilityPack,
+  PendingChange,
+  PlatformSnapshot,
+  RagConfig,
+} from '@/lib/types';
 
 function HealthDot({ status }: { status: string }) {
   const color =
@@ -21,9 +27,11 @@ function HealthDot({ status }: { status: string }) {
 export default function PacksPage() {
   const [data, setData] = useState<CapabilitiesResponse | null>(null);
   const [platform, setPlatform] = useState<PlatformSnapshot | null>(null);
+  const [pending, setPending] = useState<PendingChange[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [mutationBusy, setMutationBusy] = useState<string | null>(null);
   const [tenantDraft, setTenantDraft] = useState('default');
   const [ragDraft, setRagDraft] = useState<RagConfig | null>(null);
   const [savingPlatform, setSavingPlatform] = useState(false);
@@ -31,12 +39,17 @@ export default function PacksPage() {
   const load = useCallback(() => {
     setLoading(true);
     setError(null);
-    return Promise.all([api.listCapabilities(), api.getPlatform()])
-      .then(([caps, plat]) => {
+    return Promise.all([
+      api.listCapabilities(),
+      api.getPlatform(),
+      api.listPendingChanges('pending').catch(() => ({ mutations: [] as PendingChange[], count: 0 })),
+    ])
+      .then(([caps, plat, muts]) => {
         setData(caps);
         setPlatform(plat);
         setTenantDraft(plat.tenant_id);
         setRagDraft(plat.rag);
+        setPending(muts.mutations ?? []);
         setLoading(false);
       })
       .catch((e) => {
@@ -68,6 +81,35 @@ export default function PacksPage() {
       setError(e instanceof ApiError ? e.message : 'Failed to update pack');
     } finally {
       setBusyId(null);
+    }
+  };
+
+  const applyChange = async (m: PendingChange) => {
+    setMutationBusy(m.mutation_id);
+    setError(null);
+    try {
+      await api.applyPendingChange(m.mutation_id, {
+        preview_checksum: m.preview_checksum,
+        ack: 'Apply',
+      });
+      setPending((prev) => prev.filter((x) => x.mutation_id !== m.mutation_id));
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Failed to apply changes');
+    } finally {
+      setMutationBusy(null);
+    }
+  };
+
+  const discardChange = async (m: PendingChange) => {
+    setMutationBusy(m.mutation_id);
+    setError(null);
+    try {
+      await api.discardPendingChange(m.mutation_id);
+      setPending((prev) => prev.filter((x) => x.mutation_id !== m.mutation_id));
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Failed to discard changes');
+    } finally {
+      setMutationBusy(null);
     }
   };
 
@@ -110,7 +152,7 @@ export default function PacksPage() {
         <>
           <PageHeader
             title="Capability packs"
-            description="Read-only MCP tools via head LiteLLM. Tenant, RAG versions, and RW grant stubs live here for productization."
+            description="Connect data sources so the AI can answer questions. Enable a pack when its backend is ready—no risk configuration required."
           />
 
           {platform && (
@@ -208,12 +250,64 @@ export default function PacksPage() {
           <div className="mb-4 flex items-start gap-2 rounded-xl border border-slate-800 bg-slate-900/40 p-4 text-sm text-slate-400">
             <Shield className="mt-0.5 h-4 w-4 shrink-0 text-cyan-500/80" />
             <p>
-              All shipped packs are <strong className="text-slate-300">read-only</strong>. RW grant
-              stubs exist for future tools; they require{' '}
-              <code className="text-slate-400">ALLOW_RW_CAPABILITIES</code>, admin ack, HITL, and
-              rollback before any write tools can be registered.
+              Shipped packs only <strong className="text-slate-300">read</strong> your data. The AI
+              answers questions immediately when a pack is enabled. Features that propose edits will
+              always ask for your approval before applying changes.
             </p>
           </div>
+
+          {pending.length > 0 && (
+            <Card className="mb-6 space-y-3 border-amber-500/25 bg-amber-500/5">
+              <div className="text-sm font-medium text-slate-100">Pending changes</div>
+              <p className="text-xs text-slate-500">
+                The AI prepared these changes. Nothing is applied until you review and confirm.
+              </p>
+              <div className="space-y-3">
+                {pending.map((m) => (
+                  <div
+                    key={m.mutation_id}
+                    className="rounded-lg border border-slate-800 bg-slate-950/50 p-3"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-medium text-slate-200">
+                          {m.title || m.summary || 'Proposed changes'}
+                        </div>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {m.preview_text || m.summary || m.capability_id}
+                        </p>
+                        {m.preview &&
+                        typeof m.preview === 'object' &&
+                        m.preview !== null &&
+                        'items' in m.preview &&
+                        Array.isArray((m.preview as { items?: unknown[] }).items) ? (
+                          <p className="mt-1 text-xs text-slate-600">
+                            {`${(m.preview as { items: unknown[] }).items.length} item(s)`}
+                          </p>
+                        ) : null}
+                      </div>
+                      <div className="flex shrink-0 gap-2">
+                        <Button
+                          variant="secondary"
+                          disabled={mutationBusy === m.mutation_id}
+                          onClick={() => discardChange(m)}
+                        >
+                          {mutationBusy === m.mutation_id ? '…' : 'Discard'}
+                        </Button>
+                        <Button
+                          variant="primary"
+                          disabled={mutationBusy === m.mutation_id}
+                          onClick={() => applyChange(m)}
+                        >
+                          {mutationBusy === m.mutation_id ? '…' : 'Apply'}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
 
           <div className="space-y-4">
             {data.capabilities.map((cap) => (
@@ -226,15 +320,25 @@ export default function PacksPage() {
                       <span className="rounded-md bg-slate-800 px-2 py-0.5 text-xs text-slate-400">
                         {cap.pack} v{cap.pack_version}
                       </span>
-                      <span className="rounded-md bg-slate-800 px-2 py-0.5 text-xs text-emerald-400/80">
-                        {(cap.access_modes || ['ro']).join('/')}
-                      </span>
+                      {cap.read_only !== false && (
+                        <span className="rounded-md bg-emerald-950/50 px-2 py-0.5 text-xs text-emerald-400/90">
+                          Read only
+                        </span>
+                      )}
+                      {cap.changes_need_approval && (
+                        <span className="rounded-md bg-amber-950/40 px-2 py-0.5 text-xs text-amber-300/90">
+                          Needs approval to apply
+                        </span>
+                      )}
                       <span className="inline-flex items-center gap-1.5 text-xs text-slate-500">
                         <HealthDot status={cap.health?.status ?? 'unknown'} />
                         MCP {cap.health?.status ?? 'unknown'}
                       </span>
                     </div>
                     <p className="mt-1 text-sm text-slate-400">{cap.description}</p>
+                    {cap.intent_summary && (
+                      <p className="mt-1 text-xs text-slate-500">{cap.intent_summary}</p>
+                    )}
                   </div>
                   <Button
                     variant={cap.enabled ? 'secondary' : 'primary'}

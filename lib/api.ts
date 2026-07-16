@@ -168,6 +168,31 @@ export const api = {
   listCapabilities: () =>
     fetchJson<import('@/lib/types').CapabilitiesResponse>('/api/capabilities'),
 
+  listPendingChanges: (status = 'pending') =>
+    fetchJson<{ mutations: import('@/lib/types').PendingChange[]; count: number }>(
+      `/api/mutations?status=${encodeURIComponent(status)}`,
+    ),
+
+  applyPendingChange: (id: string, body: { preview_checksum: string; ack: string }) =>
+    fetchJson<import('@/lib/types').PendingChange>(
+      `/api/mutations/${encodeURIComponent(id)}/commit`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      },
+    ),
+
+  discardPendingChange: (id: string) =>
+    fetchJson<import('@/lib/types').PendingChange>(
+      `/api/mutations/${encodeURIComponent(id)}/cancel`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      },
+    ),
+
   setCapabilityEnabled: (
     id: string,
     enabled: boolean,

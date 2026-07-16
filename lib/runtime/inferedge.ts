@@ -271,6 +271,40 @@ export async function listCapabilities(): Promise<import('@/lib/types').Capabili
   return controllerJson<import('@/lib/types').CapabilitiesResponse>('/capabilities');
 }
 
+export async function listPendingChanges(
+  status = 'pending',
+): Promise<{ mutations: import('@/lib/types').PendingChange[]; count: number }> {
+  const q = status ? `?status=${encodeURIComponent(status)}` : '';
+  return controllerJson(`/mutations${q}`);
+}
+
+export async function getPendingChange(
+  id: string,
+): Promise<import('@/lib/types').PendingChange> {
+  return controllerJson(`/mutations/${encodeURIComponent(id)}`);
+}
+
+export async function applyPendingChange(
+  id: string,
+  body: { preview_checksum: string; ack: string },
+): Promise<import('@/lib/types').PendingChange> {
+  return controllerJson(`/mutations/${encodeURIComponent(id)}/commit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+export async function discardPendingChange(
+  id: string,
+): Promise<import('@/lib/types').PendingChange> {
+  return controllerJson(`/mutations/${encodeURIComponent(id)}/cancel`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+}
+
 export async function setCapabilityEnabled(
   id: string,
   enabled: boolean,

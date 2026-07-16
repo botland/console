@@ -93,6 +93,12 @@ export interface CapabilityPack {
   grant_enabled?: boolean;
   requires_hitl?: boolean;
   rw_blocked_reason?: string | null;
+  /** Plain-language what the pack does (no internal risk labels). */
+  intent_summary?: string;
+  approval_required?: boolean;
+  changes_need_approval?: boolean;
+  policy_valid?: boolean;
+  policy_error?: string | null;
 }
 
 export interface CapabilitiesResponse {
@@ -100,6 +106,27 @@ export interface CapabilitiesResponse {
   tenant_id?: string;
   allow_rw_capabilities?: boolean;
   capabilities: CapabilityPack[];
+}
+
+/** Pending change prepared by AI; Apply/Discard only (product vocabulary). */
+export interface PendingChange {
+  mutation_id: string;
+  tenant_id?: string;
+  capability_id: string;
+  status: 'pending' | 'committed' | 'cancelled' | 'expired';
+  title?: string;
+  summary?: string;
+  preview_text?: string;
+  preview?: Record<string, unknown> | unknown;
+  preview_checksum: string;
+  created_by?: string | null;
+  created_at?: string | null;
+  expires_at?: string | null;
+  commit_actor?: string | null;
+  committed_at?: string | null;
+  rollback_ref?: string | null;
+  changes_need_approval?: boolean;
+  idempotent_replay?: boolean;
 }
 
 export interface RagConfig {
