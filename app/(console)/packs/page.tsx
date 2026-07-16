@@ -1,11 +1,26 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import { Package, Shield } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ChevronDown, ChevronRight, Package, Shield } from 'lucide-react';
 
 import { PageState } from '@/components/PageState';
 import { Button, Card, Input, Label, PageHeader } from '@/components/ui';
 import { api, ApiError } from '@/lib/api';
+import {
+  COMING_SOON_CONNECTORS,
+  CONNECTOR_DEFS,
+  SECTION_META,
+  connectionStatus,
+  enableConfirmMessage,
+  statusDotClass,
+  statusLabel,
+  trustLabel,
+  trustTone,
+  unmappedCapabilities,
+  type ConnectorDef,
+  type PermissionMeta,
+  type ConnectorSection,
+} from '@/lib/connectors';
 import type {
   CapabilitiesResponse,
   CapabilityPack,
@@ -14,14 +29,8 @@ import type {
   RagConfig,
 } from '@/lib/types';
 
-function HealthDot({ status }: { status: string }) {
-  const color =
-    status === 'up'
-      ? 'bg-emerald-400'
-      : status === 'down'
-        ? 'bg-rose-400'
-        : 'bg-slate-500';
-  return <span className={`inline-block h-2 w-2 rounded-full ${color}`} title={status} />;
+function packById(data: CapabilitiesResponse | null, id: string): CapabilityPack | undefined {
+  return data?.capabilities.find((c) => c.id === id);
 }
 
 export default function PacksPage() {
@@ -35,6 +44,8 @@ export default function PacksPage() {
   const [tenantDraft, setTenantDraft] = useState('default');
   const [ragDraft, setRagDraft] = useState<RagConfig | null>(null);
   const [savingPlatform, setSavingPlatform] = useState(false);
+  const [developerMode, setDeveloperMode] = useState(false);
+  const [expandedTech, setExpandedTech] = useState<Record<string, boolean>>({});
 
   const load = useCallback(() => {
     setLoading(true);
@@ -53,7 +64,7 @@ export default function PacksPage() {
         setLoading(false);
       })
       .catch((e) => {
-        setError(e instanceof ApiError ? e.message : 'Failed to load packs / platform');
+        setError(e instanceof ApiError ? e.message : 'Failed to load sources / platform');
         setLoading(false);
       });
   }, []);
@@ -62,7 +73,13 @@ export default function PacksPage() {
     load();
   }, [load]);
 
-  const toggle = async (cap: CapabilityPack) => {
+  const togglePermission = async (permission: PermissionMeta, cap: CapabilityPack) => {
+    if (!cap.enabled) {
+      const msg = enableConfirmMessage(permission);
+      if (msg && typeof window !== 'undefined' && !window.confirm(msg)) {
+        return;
+      }
+    }
     setBusyId(cap.id);
     setError(null);
     try {
@@ -78,13 +95,24 @@ export default function PacksPage() {
           : prev,
       );
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Failed to update pack');
+      setError(e instanceof ApiError ? e.message : 'Failed to update source');
     } finally {
       setBusyId(null);
     }
   };
 
   const applyChange = async (m: PendingChange) => {
+    const isHighImpact =
+      m.capability_id === 'knowledge.propose_archive' ||
+      (m.title || '').toLowerCase().includes('archive') ||
+      (m.summary || '').toLowerCase().includes('trash');
+    if (
+      isHighImpact &&
+      typeof window !== 'undefined' &&
+      !window.confirm('Apply this high-impact change? You can usually roll back from staging, but review carefully.')
+    ) {
+      return;
+    }
     setMutationBusy(m.mutation_id);
     setError(null);
     try {
@@ -140,10 +168,164 @@ export default function PacksPage() {
       setPlatform(snap);
       setRagDraft(snap.rag);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Failed to save RAG config');
+      setError(e instanceof ApiError ? e.message : 'Failed to save knowledge settings');
     } finally {
       setSavingPlatform(false);
     }
+  };
+
+  const sections = useMemo(() => {
+    const order: ConnectorSection[] = ['builtin', 'apps', 'advanced'];
+    return order
+      .map((section) => ({
+        section,
+        connectors: CONNECTOR_DEFS.filter((c) => {
+          if (c.section !== section) return false;
+          if (c.advancedOnly && !developerMode) return false;
+          return true;
+        }),
+      }))
+      .filter((g) => g.connectors.length > 0);
+  }, [developerMode]);
+
+  const orphanCaps = useMemo(
+    () => (data ? unmappedCapabilities(data.capabilities) : []),
+    [data],
+  );
+
+  const renderConnector = (connector: ConnectorDef) => {
+    const packs = data?.capabilities ?? [];
+    const status = connectionStatus(packs, connector);
+    const techOpen = expandedTech[connector.id] ?? false;
+
+    return (
+      <Card key={connector.id} className="space-y-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <Package className="h-4 w-4 text-cyan-400/80" />
+              <h3 className="font-medium text-slate-100">{connector.displayName}</h3>
+              <span className="inline-flex items-center gap-1.5 rounded-md border border-slate-800 bg-slate-950/50 px-2 py-0.5 text-xs text-slate-300">
+                <span className={`inline-block h-2 w-2 rounded-full ${statusDotClass(status)}`} />
+                {statusLabel(status)}
+              </span>
+            </div>
+            <p className="mt-2 text-sm text-slate-400">{connector.summary}</p>
+            {connector.roadmapNote && (
+              <p className="mt-1 text-xs text-slate-500">{connector.roadmapNote}</p>
+            )}
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          {connector.permissions.map((permission) => {
+            const cap = packById(data, permission.capabilityId);
+            if (!cap) {
+              return (
+                <div
+                  key={permission.capabilityId}
+                  className="rounded-lg border border-slate-800/80 bg-slate-950/40 p-3 text-xs text-slate-500"
+                >
+                  {permission.label} — not available on this appliance build
+                </div>
+              );
+            }
+            return (
+              <div
+                key={permission.capabilityId}
+                className="rounded-lg border border-slate-800 bg-slate-950/40 p-3"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-medium text-slate-200">{permission.label}</span>
+                      <span
+                        className={`rounded-md border px-2 py-0.5 text-xs ${trustTone(permission.trust)}`}
+                      >
+                        {trustLabel(permission.trust)}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500">{permission.description}</p>
+                    <ul className="mt-2 space-y-0.5 text-xs text-slate-400">
+                      {permission.canDo.map((line) => (
+                        <li key={line} className="flex gap-1.5">
+                          <span className="text-emerald-500/80">✓</span>
+                          <span>{line}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    {permission.trust === 'read' && (
+                      <p className="pt-1 text-xs font-medium text-emerald-400/80">
+                        Read-only access. Your data is never changed.
+                      </p>
+                    )}
+                    {(permission.trust === 'propose' || permission.trust === 'high_impact') && (
+                      <p className="pt-1 text-xs font-medium text-amber-300/80">
+                        Suggestions require your approval before anything changes.
+                      </p>
+                    )}
+                  </div>
+                  <Button
+                    variant={cap.enabled ? 'secondary' : 'primary'}
+                    disabled={busyId === cap.id}
+                    onClick={() => togglePermission(permission, cap)}
+                  >
+                    {busyId === cap.id ? 'Saving…' : cap.enabled ? 'Disable' : 'Enable'}
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div>
+          <button
+            type="button"
+            className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-300"
+            onClick={() =>
+              setExpandedTech((prev) => ({ ...prev, [connector.id]: !techOpen }))
+            }
+          >
+            {techOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+            Technical details
+          </button>
+          {techOpen && (
+            <div className="mt-2 space-y-2 rounded-lg border border-slate-800 bg-slate-950/60 p-3 text-xs text-slate-500">
+              {connector.permissions.map((permission) => {
+                const cap = packById(data, permission.capabilityId);
+                if (!cap) return null;
+                return (
+                  <div key={cap.id} className="space-y-1 border-b border-slate-800/80 pb-2 last:border-0 last:pb-0">
+                    <div>
+                      <span className="text-slate-400">Capability id: </span>
+                      <code className="text-slate-400">{cap.id}</code>
+                    </div>
+                    <div>
+                      <span className="text-slate-400">Pack: </span>
+                      {cap.pack} v{cap.pack_version}
+                    </div>
+                    <div>
+                      <span className="text-slate-400">Tools: </span>
+                      {(cap.allowed_tools || []).join(', ') || '—'}
+                    </div>
+                    <div>
+                      <span className="text-slate-400">Backend: </span>
+                      {cap.configured ? 'configured' : 'needs setup'}
+                      {cap.configured_detail ? ` — ${cap.configured_detail}` : ''}
+                    </div>
+                    {cap.docs && (
+                      <pre className="mt-1 overflow-x-auto whitespace-pre-wrap text-slate-600">
+                        {cap.docs.trim()}
+                      </pre>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </Card>
+    );
   };
 
   return (
@@ -151,13 +333,133 @@ export default function PacksPage() {
       {data && (
         <>
           <PageHeader
-            title="Capability packs"
-            description="Connect data sources so the AI can answer questions. Enable a pack when its backend is ready—no risk configuration required."
+            title="Information sources"
+            description="Choose which systems the AI may use to answer questions. Enable a source when it is ready—read access works immediately; anything that changes data needs your approval."
           />
 
-          {platform && (
-            <Card className="mb-6 space-y-4">
-              <div className="text-sm font-medium text-slate-200">Platform (tenant-ready)</div>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-start gap-2 rounded-xl border border-slate-800 bg-slate-900/40 p-4 text-sm text-slate-400 sm:flex-1">
+              <Shield className="mt-0.5 h-4 w-4 shrink-0 text-cyan-500/80" />
+              <p>
+                <strong className="text-slate-300">Read-only by default.</strong> The AI cannot
+                modify your data unless you enable a permission that prepares changes—and those
+                always wait for your approval.
+              </p>
+            </div>
+            <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-2 text-xs text-slate-400">
+              <input
+                type="checkbox"
+                className="rounded border-slate-600"
+                checked={developerMode}
+                onChange={(e) => setDeveloperMode(e.target.checked)}
+              />
+              Developer mode
+            </label>
+          </div>
+
+          {pending.length > 0 && (
+            <Card className="mb-6 space-y-3 border-amber-500/25 bg-amber-500/5">
+              <div className="text-sm font-medium text-slate-100">Pending approvals</div>
+              <p className="text-xs text-slate-500">
+                The AI prepared these changes. Nothing is applied until you review and confirm.
+              </p>
+              <div className="space-y-3">
+                {pending.map((m) => (
+                  <div
+                    key={m.mutation_id}
+                    className="rounded-lg border border-slate-800 bg-slate-950/50 p-3"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-medium text-slate-200">
+                          {m.title || m.summary || 'Proposed changes'}
+                        </div>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {m.preview_text || m.summary || 'Review before applying'}
+                        </p>
+                        {m.preview &&
+                        typeof m.preview === 'object' &&
+                        m.preview !== null &&
+                        'items' in m.preview &&
+                        Array.isArray((m.preview as { items?: unknown[] }).items) ? (
+                          <p className="mt-1 text-xs text-slate-600">
+                            {`${(m.preview as { items: unknown[] }).items.length} item(s)`}
+                          </p>
+                        ) : null}
+                      </div>
+                      <div className="flex shrink-0 gap-2">
+                        <Button
+                          variant="secondary"
+                          disabled={mutationBusy === m.mutation_id}
+                          onClick={() => discardChange(m)}
+                        >
+                          {mutationBusy === m.mutation_id ? '…' : 'Discard'}
+                        </Button>
+                        <Button
+                          variant="primary"
+                          disabled={mutationBusy === m.mutation_id}
+                          onClick={() => applyChange(m)}
+                        >
+                          {mutationBusy === m.mutation_id ? '…' : 'Apply'}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+
+          {!data.mcp_enabled && developerMode && (
+            <Card className="mb-6 border-amber-500/30 bg-amber-500/5">
+              <p className="text-sm text-amber-200/90">
+                Tool gateway is disabled on this appliance (
+                <code className="text-amber-100">ENABLE_MCP=false</code>). Sources will not
+                expose tools until it is turned on.
+              </p>
+            </Card>
+          )}
+
+          <div className="space-y-8">
+            {sections.map(({ section, connectors }) => (
+              <section key={section} className="space-y-4">
+                <div>
+                  <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-300">
+                    {SECTION_META[section].title}
+                  </h2>
+                  <p className="mt-1 text-xs text-slate-500">{SECTION_META[section].description}</p>
+                </div>
+                <div className="space-y-4">{connectors.map(renderConnector)}</div>
+              </section>
+            ))}
+
+            <section className="space-y-4">
+              <div>
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-300">
+                  Coming soon
+                </h2>
+                <p className="mt-1 text-xs text-slate-500">
+                  Document suites and more databases—Microsoft 365, Atlassian, Google, MySQL, LDAP.
+                </p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {COMING_SOON_CONNECTORS.map((c) => (
+                  <Card key={c.id} className="space-y-1 opacity-80">
+                    <div className="text-sm font-medium text-slate-300">{c.displayName}</div>
+                    <p className="text-xs text-slate-500">{c.summary}</p>
+                    <span className="inline-block pt-1 text-xs text-slate-600">Not available yet</span>
+                  </Card>
+                ))}
+              </div>
+            </section>
+          </div>
+
+          {developerMode && platform && (
+            <Card className="mt-8 space-y-4 border-slate-700/80">
+              <div className="text-sm font-medium text-slate-200">Platform (developer)</div>
+              <p className="text-xs text-slate-500">
+                Tenant, retrieval, and runtime settings. Hidden from the default sources view.
+              </p>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <Label>Tenant ID</Label>
@@ -171,22 +473,21 @@ export default function PacksPage() {
                       Save
                     </Button>
                   </div>
-                  <p className="mt-1 text-xs text-slate-500">
-                    Propagates to retrieval/MCP contracts. SSO can override via{' '}
-                    <code className="text-slate-400">X-Tenant-Id</code>.
-                  </p>
                 </div>
                 <div>
-                  <Label>Agent runtime</Label>
+                  <Label>AI runtime</Label>
                   <p className="mt-2 text-sm text-slate-300">
-                    <code className="text-cyan-400/90">{platform.agent_runtime}</code>
-                    <span className="ml-2 text-xs text-slate-500">
-                      (v1 ships None — no LangGraph dependency)
-                    </span>
+                    Built-in
+                    {platform.agent_runtime && platform.agent_runtime !== 'none' ? (
+                      <span className="ml-2 text-xs text-slate-500">({platform.agent_runtime})</span>
+                    ) : (
+                      <span className="ml-2 text-xs text-slate-500">(standard)</span>
+                    )}
                   </p>
                   <p className="mt-1 text-xs text-slate-500">
-                    RW packs: {platform.allow_rw_capabilities ? 'env allowed' : 'blocked'} · SSO:{' '}
-                    {platform.acl.sso_enabled ? 'on' : 'off'}
+                    Write sources:{' '}
+                    {platform.allow_rw_capabilities ? 'environment allows' : 'blocked by policy'} ·
+                    Single sign-on: {platform.acl.sso_enabled ? 'on' : 'off'}
                   </p>
                 </div>
               </div>
@@ -225,7 +526,7 @@ export default function PacksPage() {
                   </div>
                   <div className="sm:col-span-3">
                     <Button variant="secondary" disabled={savingPlatform} onClick={saveRag}>
-                      Save RAG config (versioned)
+                      Save knowledge settings
                     </Button>
                     {platform.versions.length > 0 && (
                       <span className="ml-3 text-xs text-slate-500">
@@ -238,141 +539,21 @@ export default function PacksPage() {
             </Card>
           )}
 
-          {!data.mcp_enabled && (
-            <Card className="mb-6 border-amber-500/30 bg-amber-500/5">
-              <p className="text-sm text-amber-200/90">
-                MCP is disabled (<code className="text-amber-100">ENABLE_MCP=false</code>). Packs
-                will not be registered on LiteLLM until MCP is turned on.
-              </p>
-            </Card>
-          )}
-
-          <div className="mb-4 flex items-start gap-2 rounded-xl border border-slate-800 bg-slate-900/40 p-4 text-sm text-slate-400">
-            <Shield className="mt-0.5 h-4 w-4 shrink-0 text-cyan-500/80" />
-            <p>
-              Shipped packs only <strong className="text-slate-300">read</strong> your data. The AI
-              answers questions immediately when a pack is enabled. Features that propose edits will
-              always ask for your approval before applying changes.
-            </p>
-          </div>
-
-          {pending.length > 0 && (
-            <Card className="mb-6 space-y-3 border-amber-500/25 bg-amber-500/5">
-              <div className="text-sm font-medium text-slate-100">Pending changes</div>
+          {developerMode && orphanCaps.length > 0 && (
+            <Card className="mt-4 space-y-2 border-slate-700/80">
+              <div className="text-sm font-medium text-slate-200">Unmapped capabilities</div>
               <p className="text-xs text-slate-500">
-                The AI prepared these changes. Nothing is applied until you review and confirm.
+                Internal packs on the controller without a source presentation.
               </p>
-              <div className="space-y-3">
-                {pending.map((m) => (
-                  <div
-                    key={m.mutation_id}
-                    className="rounded-lg border border-slate-800 bg-slate-950/50 p-3"
-                  >
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <div className="text-sm font-medium text-slate-200">
-                          {m.title || m.summary || 'Proposed changes'}
-                        </div>
-                        <p className="mt-1 text-xs text-slate-500">
-                          {m.preview_text || m.summary || m.capability_id}
-                        </p>
-                        {m.preview &&
-                        typeof m.preview === 'object' &&
-                        m.preview !== null &&
-                        'items' in m.preview &&
-                        Array.isArray((m.preview as { items?: unknown[] }).items) ? (
-                          <p className="mt-1 text-xs text-slate-600">
-                            {`${(m.preview as { items: unknown[] }).items.length} item(s)`}
-                          </p>
-                        ) : null}
-                      </div>
-                      <div className="flex shrink-0 gap-2">
-                        <Button
-                          variant="secondary"
-                          disabled={mutationBusy === m.mutation_id}
-                          onClick={() => discardChange(m)}
-                        >
-                          {mutationBusy === m.mutation_id ? '…' : 'Discard'}
-                        </Button>
-                        <Button
-                          variant="primary"
-                          disabled={mutationBusy === m.mutation_id}
-                          onClick={() => applyChange(m)}
-                        >
-                          {mutationBusy === m.mutation_id ? '…' : 'Apply'}
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
+              <ul className="space-y-1 text-xs text-slate-400">
+                {orphanCaps.map((c) => (
+                  <li key={c.id}>
+                    <code>{c.id}</code> — {c.description}
+                  </li>
                 ))}
-              </div>
+              </ul>
             </Card>
           )}
-
-          <div className="space-y-4">
-            {data.capabilities.map((cap) => (
-              <Card key={cap.id} className="space-y-3">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Package className="h-4 w-4 text-cyan-400/80" />
-                      <h3 className="font-medium text-slate-100">{cap.id}</h3>
-                      <span className="rounded-md bg-slate-800 px-2 py-0.5 text-xs text-slate-400">
-                        {cap.pack} v{cap.pack_version}
-                      </span>
-                      {cap.read_only !== false && (
-                        <span className="rounded-md bg-emerald-950/50 px-2 py-0.5 text-xs text-emerald-400/90">
-                          Read only
-                        </span>
-                      )}
-                      {cap.changes_need_approval && (
-                        <span className="rounded-md bg-amber-950/40 px-2 py-0.5 text-xs text-amber-300/90">
-                          Needs approval to apply
-                        </span>
-                      )}
-                      <span className="inline-flex items-center gap-1.5 text-xs text-slate-500">
-                        <HealthDot status={cap.health?.status ?? 'unknown'} />
-                        MCP {cap.health?.status ?? 'unknown'}
-                      </span>
-                    </div>
-                    <p className="mt-1 text-sm text-slate-400">{cap.description}</p>
-                    {cap.intent_summary && (
-                      <p className="mt-1 text-xs text-slate-500">{cap.intent_summary}</p>
-                    )}
-                  </div>
-                  <Button
-                    variant={cap.enabled ? 'secondary' : 'primary'}
-                    disabled={busyId === cap.id}
-                    onClick={() => toggle(cap)}
-                  >
-                    {busyId === cap.id ? 'Saving…' : cap.enabled ? 'Disable' : 'Enable'}
-                  </Button>
-                </div>
-
-                <div className="grid gap-2 text-xs text-slate-500 sm:grid-cols-2">
-                  <div>
-                    <span className="text-slate-400">Tools: </span>
-                    {(cap.allowed_tools || []).join(', ') || '—'}
-                  </div>
-                  <div>
-                    <span className="text-slate-400">Backend: </span>
-                    {cap.configured ? (
-                      <span className="text-emerald-400/90">configured</span>
-                    ) : (
-                      <span className="text-amber-400/90">needs setup</span>
-                    )}
-                    {cap.configured_detail ? ` — ${cap.configured_detail}` : ''}
-                  </div>
-                </div>
-
-                {cap.docs && (
-                  <pre className="overflow-x-auto whitespace-pre-wrap rounded-lg border border-slate-800 bg-slate-950/60 p-3 text-xs text-slate-400">
-                    {cap.docs.trim()}
-                  </pre>
-                )}
-              </Card>
-            ))}
-          </div>
         </>
       )}
     </PageState>

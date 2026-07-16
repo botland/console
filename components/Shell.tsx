@@ -36,7 +36,7 @@ const NAV_META: Record<
   orchestration: { label: 'Orchestration', icon: Network },
   nodes: { label: 'Nodes', icon: Server },
   storage: { label: 'Storage', icon: HardDrive },
-  packs: { label: 'Packs', icon: Package },
+  packs: { label: 'Sources', icon: Package },
   workflows: { label: 'Workflows', icon: GitBranch },
   system: { label: 'System', icon: Settings },
   support: { label: 'Support', icon: LifeBuoy },

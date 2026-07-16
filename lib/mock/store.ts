@@ -709,7 +709,7 @@ const MOCK_CAPABILITIES: import('@/lib/types').CapabilityPack[] = [
     configured: true,
     configured_detail: 'mock drafts',
     read_only: false,
-    intent_summary: 'Can create new items. Changes may be applied according to pack rules.',
+    intent_summary: 'Can create new items only. Existing data is never modified.',
     approval_required: false,
     changes_need_approval: false,
     policy_valid: true,
