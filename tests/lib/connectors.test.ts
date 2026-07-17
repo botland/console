@@ -32,7 +32,7 @@ function pack(partial: Partial<CapabilityPack> & { id: string }): CapabilityPack
 
 describe('source types and instances', () => {
   it('maps capabilities to source types (packs stay internal)', () => {
-    const hit = lookupCapability('knowledge.search');
+    const hit = lookupCapability('corpus.read');
     expect(hit?.connector.id).toBe('appliance-knowledge');
     expect(hit?.permission.trust).toBe('read');
     expect(lookupCapability('sql.query')?.connector.id).toBe('postgresql');
@@ -138,7 +138,7 @@ describe('source types and instances', () => {
 
   it('seeds builtin knowledge from packs', () => {
     const packs = [
-      pack({ id: 'knowledge.search', enabled: true }),
+      pack({ id: 'corpus.read', enabled: true }),
       pack({ id: 'git.search', enabled: false, configured: false }),
     ];
     const seeded = seedInstancesFromPacks(packs);
@@ -148,9 +148,9 @@ describe('source types and instances', () => {
   });
 
   it('requires confirm copy for non-read enables', () => {
-    const propose = lookupCapability('knowledge.propose_edit')!.permission;
+    const propose = lookupCapability('corpus.propose_write')!.permission;
     expect(enableConfirmMessage(propose)).toMatch(/approval/i);
-    const read = lookupCapability('knowledge.search')!.permission;
+    const read = lookupCapability('corpus.read')!.permission;
     expect(enableConfirmMessage(read)).toBeNull();
     expect(trustLabel('high_impact')).toMatch(/confirm/i);
   });

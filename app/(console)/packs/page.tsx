@@ -246,6 +246,7 @@ export default function PacksPage() {
 
   const applyChange = async (m: PendingChange) => {
     const isHighImpact =
+      m.capability_id === 'corpus.propose_archive' ||
       m.capability_id === 'knowledge.propose_archive' ||
       (m.title || '').toLowerCase().includes('archive') ||
       (m.summary || '').toLowerCase().includes('trash');

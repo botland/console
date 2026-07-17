@@ -603,12 +603,12 @@ const _RO_INTENT =
 
 const MOCK_CAPABILITIES: import('@/lib/types').CapabilityPack[] = [
   {
-    id: 'knowledge.search',
+    id: 'corpus.read',
     description: 'Answers questions from the appliance knowledge corpus',
     enabled: true,
-    pack: 'knowledge_ro',
+    pack: 'platform',
     pack_version: '1.0.0',
-    mcp_server: 'knowledge_ro',
+    mcp_server: '',
     allowed_tools: ['knowledge_list', 'knowledge_search', 'knowledge_read'],
     docs: 'Mock: corpus pack always on.',
     health: { status: 'up', detail: 'mock' },
@@ -675,12 +675,12 @@ const MOCK_CAPABILITIES: import('@/lib/types').CapabilityPack[] = [
     policy_valid: true,
   },
   {
-    id: 'knowledge.propose_edit',
+    id: 'corpus.propose_write',
     description: 'AI can propose documentation edits. Changes need your approval before they apply.',
     enabled: false,
-    pack: 'knowledge_propose',
+    pack: 'platform',
     pack_version: '1.0.0',
-    mcp_server: 'knowledge_propose',
+    mcp_server: '',
     allowed_tools: [
       'knowledge_prepare_patch',
       'knowledge_preview_patch',
@@ -697,12 +697,12 @@ const MOCK_CAPABILITIES: import('@/lib/types').CapabilityPack[] = [
     policy_valid: true,
   },
   {
-    id: 'notes.create',
+    id: 'draft.create',
     description: 'AI can create new draft notes. Existing documents are never modified.',
     enabled: false,
-    pack: 'notes_create',
+    pack: 'platform',
     pack_version: '1.0.0',
-    mcp_server: 'notes_create',
+    mcp_server: '',
     allowed_tools: ['note_create_draft', 'note_list_drafts'],
     docs: 'Creates new files under staging/drafts/ only.',
     health: { status: 'up', detail: 'mock' },
@@ -715,13 +715,13 @@ const MOCK_CAPABILITIES: import('@/lib/types').CapabilityPack[] = [
     policy_valid: true,
   },
   {
-    id: 'knowledge.propose_archive',
+    id: 'corpus.propose_archive',
     description:
       'AI can propose moving staging files to trash. Always needs your confirmation. Not permanent delete.',
     enabled: false,
-    pack: 'knowledge_propose',
+    pack: 'platform',
     pack_version: '1.0.0',
-    mcp_server: 'knowledge_propose',
+    mcp_server: '',
     allowed_tools: [
       'knowledge_prepare_archive',
       'knowledge_preview_patch',
@@ -799,7 +799,7 @@ export function mockSeedPendingChange(
 ): import('@/lib/types').PendingChange {
   const id = partial?.mutation_id ?? `mock-mut-${mockPendingChanges.length + 1}`;
   const row: import('@/lib/types').PendingChange = {
-    capability_id: 'knowledge.propose_edit',
+    capability_id: 'corpus.propose_write',
     title: 'Mock documentation edits',
     summary: 'AI prepared 2 documentation edits',
     preview_text: 'Update getting-started.txt',
@@ -1054,7 +1054,7 @@ export function getPepStatus(): import('@/lib/types').PepStatusResponse {
     proxy_base: 'http://controller:8080',
     v1_via_controller: true,
     chat_proxy: '/v1/chat/completions',
-    knowledge_search: '/knowledge/search',
+    knowledge_search: '/corpus/search',
     active_sessions: 0,
     note: 'mock PEP status',
   };
@@ -1171,7 +1171,7 @@ export function generateWorkflow(body: {
           title: 'Retrieve knowledge',
           kind: 'retrieval',
           risk: 'low',
-          capability_id: 'knowledge.search',
+          capability_id: 'corpus.read',
         },
         {
           id: 's2',
