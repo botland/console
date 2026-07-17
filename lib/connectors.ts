@@ -106,10 +106,11 @@ export const SOURCE_TYPES: SourceTypeDef[] = [
     section: 'builtin',
     displayName: 'Appliance knowledge',
     summary:
-      'On-box documentation the AI can search. One corpus per appliance; permissions control what the agent may do.',
+      'On-box documentation corpus (platform resource — not an MCP connector). Search via retrieval; edits via pending changes.',
     multiInstance: false,
     singletonBuiltin: true,
     configFields: [],
+    // Product noun "knowledge"; permissions bind to corpus.* executable capabilities.
     permissions: [
       {
         id: 'read',
@@ -117,7 +118,7 @@ export const SOURCE_TYPES: SourceTypeDef[] = [
         description: 'Read-only access so the AI can answer from your documentation.',
         trust: 'read',
         canDo: ['Search documentation', 'Read documents', 'Answer questions from the corpus'],
-        capabilityId: 'knowledge.search',
+        capabilityId: 'corpus.read',
       },
       {
         id: 'propose',
@@ -125,15 +126,7 @@ export const SOURCE_TYPES: SourceTypeDef[] = [
         description: 'AI can prepare documentation edits. Nothing applies without your approval.',
         trust: 'propose',
         canDo: ['Propose documentation edits', 'Preview changes before approval'],
-        capabilityId: 'knowledge.propose_edit',
-      },
-      {
-        id: 'create',
-        label: 'Create drafts',
-        description: 'AI can create new draft notes only. Existing documents are never modified.',
-        trust: 'create',
-        canDo: ['Create new draft items', 'List draft items'],
-        capabilityId: 'notes.create',
+        capabilityId: 'corpus.propose_write',
       },
       {
         id: 'high_impact',
@@ -142,7 +135,27 @@ export const SOURCE_TYPES: SourceTypeDef[] = [
           'AI can propose moving staging files to trash. Always needs your confirmation. Not permanent delete.',
         trust: 'high_impact',
         canDo: ['Propose soft-archive', 'Preview before approval'],
-        capabilityId: 'knowledge.propose_archive',
+        capabilityId: 'corpus.propose_archive',
+      },
+    ],
+  },
+  {
+    id: 'draft-notes',
+    section: 'builtin',
+    displayName: 'Draft notes',
+    summary:
+      'Create-only draft files (platform resource — not an MCP connector). Separate from the documentation corpus.',
+    multiInstance: false,
+    singletonBuiltin: true,
+    configFields: [],
+    permissions: [
+      {
+        id: 'create',
+        label: 'Create drafts',
+        description: 'AI can create new draft notes only. Existing documents are never modified.',
+        trust: 'create',
+        canDo: ['Create new draft items', 'List draft items'],
+        capabilityId: 'draft.create',
       },
     ],
   },
@@ -444,7 +457,7 @@ export function instanceStatus(
 
   const boundCaps = t.permissions
     .filter((p) => p.capabilityId)
-    .map((p) => packs.find((c) => c.id === p.capabilityId))
+    .map((p) => findPackForCapability(packs, p.capabilityId))
     .filter(Boolean) as CapabilityPack[];
 
   if (boundCaps.length === 0) return 'needs_setup';
@@ -564,12 +577,12 @@ export function seedInstancesFromPacks(packs: CapabilityPack[]): SourceInstance[
 
   for (const type of SOURCE_TYPES) {
     const capsForType = type.permissions
-      .map((p) => (p.capabilityId ? packs.find((c) => c.id === p.capabilityId) : undefined))
+      .map((p) => (p.capabilityId ? findPackForCapability(packs, p.capabilityId) : undefined))
       .filter(Boolean) as CapabilityPack[];
 
     if (type.singletonBuiltin) {
       const enabledIds = type.permissions
-        .filter((p) => p.capabilityId && packs.find((c) => c.id === p.capabilityId)?.enabled)
+        .filter((p) => p.capabilityId && findPackForCapability(packs, p.capabilityId)?.enabled)
         .map((p) => p.id);
       instances.push({
         id: `builtin-${type.id}`,
@@ -590,7 +603,7 @@ export function seedInstancesFromPacks(packs: CapabilityPack[]): SourceInstance[
     // One pack-bound seed instance when any related pack is configured or present
     const primary = capsForType[0];
     const enabledIds = type.permissions
-      .filter((p) => p.capabilityId && packs.find((c) => c.id === p.capabilityId)?.enabled)
+      .filter((p) => p.capabilityId && findPackForCapability(packs, p.capabilityId)?.enabled)
       .map((p) => p.id);
 
     const config: Record<string, string> = {};
@@ -703,7 +716,7 @@ export function mergeInstancesWithPacks(
         const enabledIds = type.permissions
           .filter((p) => {
             if (!p.capabilityId) return s.enabledPermissionIds.includes(p.id);
-            return packs.find((c) => c.id === p.capabilityId)?.enabled;
+            return findPackForCapability(packs, p.capabilityId)?.enabled;
           })
           .map((p) => p.id);
         byId.set(s.id, {
@@ -764,7 +777,7 @@ export function connectionStatus(
   };
   // If any permission enabled → connected-ish
   const caps = connector.permissions
-    .map((p) => packs.find((c) => c.id === p.capabilityId))
+    .map((p) => findPackForCapability(packs, p.capabilityId))
     .filter(Boolean) as CapabilityPack[];
   if (caps.some((c) => c.enabled)) {
     fake.enabledPermissionIds = connector.permissions.map((p) => p.id);
@@ -777,12 +790,40 @@ export function connectionStatus(
   return instanceStatus(fake, packs, connector);
 }
 
+/** Legacy capability id aliases → canonical (must match controller capability_ids.py). */
+const CAPABILITY_ALIASES: Record<string, string> = {
+  'knowledge.search': 'corpus.read',
+  'knowledge.propose_edit': 'corpus.propose_write',
+  'knowledge.propose_archive': 'corpus.propose_archive',
+  'notes.create': 'draft.create',
+};
+
+export function canonicalCapabilityId(capabilityId: string): string {
+  return CAPABILITY_ALIASES[capabilityId] || capabilityId;
+}
+
+export function capabilityIdsMatch(a: string, b: string): boolean {
+  return canonicalCapabilityId(a) === canonicalCapabilityId(b);
+}
+
 export function lookupCapability(capabilityId: string) {
+  const want = canonicalCapabilityId(capabilityId);
   for (const connector of SOURCE_TYPES) {
-    const permission = connector.permissions.find((p) => p.capabilityId === capabilityId);
+    const permission = connector.permissions.find(
+      (p) => p.capabilityId && canonicalCapabilityId(p.capabilityId) === want,
+    );
     if (permission) return { connector, permission };
   }
   return undefined;
+}
+
+/** Match a controller pack row to a permission capabilityId (alias-aware). */
+export function findPackForCapability(
+  packs: { id: string; enabled?: boolean; configured?: boolean }[],
+  capabilityId: string | undefined,
+) {
+  if (!capabilityId) return undefined;
+  return packs.find((c) => capabilityIdsMatch(c.id, capabilityId));
 }
 
 export const SECTION_META: Record<
@@ -791,7 +832,7 @@ export const SECTION_META: Record<
 > = {
   builtin: {
     title: 'On this appliance',
-    description: 'Built-in knowledge that lives on this appliance.',
+    description: 'Built-in corpus and draft sources that live on this appliance.',
   },
   apps: {
     title: 'Your systems',
