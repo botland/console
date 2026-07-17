@@ -220,6 +220,64 @@ export const api = {
       body: JSON.stringify(rag),
     }),
 
+  listSources: () => fetchJson<import('@/lib/types').SourcesResponse>('/api/sources'),
+
+  createSource: (body: Record<string, unknown>) =>
+    fetchJson<import('@/lib/types').SourceInstanceDto>('/api/sources', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+
+  patchSource: (id: string, body: Record<string, unknown>) =>
+    fetchJson<import('@/lib/types').SourceInstanceDto>(`/api/sources/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+
+  deleteSource: (id: string) =>
+    fetchJson<{ deleted: boolean; id: string }>(`/api/sources/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    }),
+
+  getAccessSummary: () =>
+    fetchJson<import('@/lib/types').AccessSummaryResponse>('/api/access/summary'),
+
+  getAccessReady: () =>
+    fetchJson<import('@/lib/types').AccessReadyResponse>('/api/access/ready'),
+
+  listAccessAudit: (params?: { limit?: number; subject?: string; allowed?: boolean }) => {
+    const q = new URLSearchParams();
+    if (params?.limit != null) q.set('limit', String(params.limit));
+    if (params?.subject) q.set('subject', params.subject);
+    if (params?.allowed != null) q.set('allowed', params.allowed ? 'true' : 'false');
+    const qs = q.toString();
+    return fetchJson<import('@/lib/types').AccessAuditResponse>(
+      qs ? `/api/access/audit?${qs}` : '/api/access/audit',
+    );
+  },
+
+  getPepStatus: () =>
+    fetchJson<import('@/lib/types').PepStatusResponse>('/api/agent/pep/status'),
+
+  knowledgeSearch: (body: { query: string; top_k?: number; mode?: string }) =>
+    fetchJson<import('@/lib/types').KnowledgeSearchResponse>('/api/knowledge/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+
+  sqlQuery: (body: { sql: string; max_rows?: number; resource?: string }) =>
+    fetchJson<import('@/lib/types').SqlQueryResponse>('/api/sql/query', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+
+  listEffectiveTools: () =>
+    fetchJson<import('@/lib/types').EffectiveToolsResponse>('/api/agent/tools/effective'),
+
   listWorkflows: (tenant_id?: string) =>
     fetchJson<{ workflows: import('@/lib/types').WorkflowRecord[] }>(
       tenant_id

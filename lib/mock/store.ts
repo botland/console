@@ -849,12 +849,277 @@ let mockPlatform: import('@/lib/types').PlatformSnapshot = {
     notes: 'Mock ACL — SSO not enabled.',
   },
   grants: [],
+  sources: [],
   allow_rw_capabilities: false,
   agent_runtime: 'none',
   versions: [],
 };
 
+let mockSources: import('@/lib/types').SourceInstanceDto[] = [
+  {
+    id: 'builtin-appliance-knowledge',
+    typeId: 'appliance-knowledge',
+    displayName: 'Appliance knowledge',
+    config: {},
+    enabledPermissionIds: ['read'],
+    groups: ['Everyone'],
+    packBound: true,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    resourceUri: 'knowledge://builtin-appliance-knowledge/collections/default',
+    scheme: 'knowledge',
+  },
+];
+
+export function listSources(): import('@/lib/types').SourcesResponse {
+  return {
+    sources: structuredClone(mockSources),
+    count: mockSources.length,
+    sso_enabled: false,
+    note: 'mock source registry',
+  };
+}
+
+export function createSource(
+  body: Record<string, unknown>,
+): import('@/lib/types').SourceInstanceDto {
+  const now = new Date().toISOString();
+  const id = String(body.id || `src_${Date.now()}`);
+  const row: import('@/lib/types').SourceInstanceDto = {
+    id,
+    typeId: String(body.typeId ?? body.type_id ?? 'postgresql'),
+    displayName: String(body.displayName ?? body.display_name ?? 'Source'),
+    config: (body.config as Record<string, string>) ?? {},
+    enabledPermissionIds: (body.enabledPermissionIds as string[]) ?? [],
+    groups: (body.groups as string[]) ?? ['Admins'],
+    packBound: Boolean(body.packBound),
+    createdAt: now,
+    updatedAt: now,
+    resourceUri: `sql://${id}`,
+    scheme: 'sql',
+  };
+  mockSources = [...mockSources, row];
+  mockPlatform = { ...mockPlatform, sources: structuredClone(mockSources) };
+  return structuredClone(row);
+}
+
+export function patchSource(
+  id: string,
+  body: Record<string, unknown>,
+): import('@/lib/types').SourceInstanceDto {
+  const idx = mockSources.findIndex((s) => s.id === id);
+  if (idx < 0) throw new Error(`source not found: ${id}`);
+  const prev = mockSources[idx];
+  const next: import('@/lib/types').SourceInstanceDto = {
+    ...prev,
+    displayName: String(body.displayName ?? body.display_name ?? prev.displayName),
+    config: (body.config as Record<string, string>) ?? prev.config,
+    enabledPermissionIds:
+      (body.enabledPermissionIds as string[]) ??
+      (body.enabled_permission_ids as string[]) ??
+      prev.enabledPermissionIds,
+    groups: (body.groups as string[]) ?? prev.groups,
+    packBound:
+      body.packBound !== undefined || body.pack_bound !== undefined
+        ? Boolean(body.packBound ?? body.pack_bound)
+        : prev.packBound,
+    updatedAt: new Date().toISOString(),
+  };
+  mockSources = mockSources.map((s, i) => (i === idx ? next : s));
+  mockPlatform = { ...mockPlatform, sources: structuredClone(mockSources) };
+  return structuredClone(next);
+}
+
+export function deleteSource(id: string): { deleted: boolean; id: string } {
+  if (id.startsWith('builtin-')) {
+    throw new Error('cannot delete builtin pack-bound instance');
+  }
+  mockSources = mockSources.filter((s) => s.id !== id);
+  mockPlatform = { ...mockPlatform, sources: structuredClone(mockSources) };
+  return { deleted: true, id };
+}
+
+const mockAccessAudit: import('@/lib/types').AccessAuditDecision[] = [
+  {
+    id: 1,
+    ts: Date.now() / 1000 - 120,
+    subject: 'alice@example.com',
+    tenant_id: 'default',
+    action: 'query',
+    resource: 'sql://finance-db/invoices',
+    allowed: true,
+    reason: 'capability_and_source_allowed',
+    source: 'headers',
+    auth_mode: 'headers',
+  },
+  {
+    id: 2,
+    ts: Date.now() / 1000 - 60,
+    subject: 'bob@example.com',
+    tenant_id: 'default',
+    action: 'tool',
+    resource: 'sql_query',
+    allowed: false,
+    reason: 'group_capability_denied',
+    source: 'headers',
+    auth_mode: 'headers',
+  },
+];
+
+export function getAccessSummary(): import('@/lib/types').AccessSummaryResponse {
+  return {
+    pep: {
+      mode: 'soft',
+      effective_mode: 'soft',
+      proxy_enabled: true,
+      v1_via_controller: true,
+      sso_enabled: false,
+    },
+    sessions_active: 0,
+    sources_count: mockSources.length,
+    audit: { sample_size: mockAccessAudit.length, allowed: 1, denied: 1 },
+    caller: {
+      subject: 'mock-operator',
+      groups: ['Everyone'],
+      tools_allowed: 4,
+      tools_denied: 1,
+    },
+    readiness: {
+      overall: 'lab_ok',
+      overall_label: 'Lab posture (acceptable for single-tenant demos)',
+    },
+    links: {
+      console_access: '/console/access',
+      audit: '/access/audit',
+      ready: '/access/ready',
+    },
+  };
+}
+
+export function getAccessReady(): import('@/lib/types').AccessReadyResponse {
+  return {
+    overall: 'lab_ok',
+    overall_label: 'Lab posture (acceptable for single-tenant demos)',
+    checks: [
+      {
+        id: 'pep_mode',
+        title: 'MCP PEP mode',
+        status: 'warn',
+        detail: 'Configured soft, effective soft — anonymous tools/call may pass (logged).',
+        remediation: 'Set OWNEDGE_MCP_PEP_MODE=strict for production multi-user.',
+      },
+      {
+        id: 'v1_path',
+        title: 'Chat via controller',
+        status: 'pass',
+        detail: 'OWNEDGE_V1_VIA_CONTROLLER routes /v1 chat through identity-aware proxy.',
+      },
+    ],
+    checklist: [
+      'OWNEDGE_MCP_PEP_MODE=strict for multi-user production',
+      'OWNEDGE_OIDC_VERIFY=true + ISSUER/JWKS when using OIDC',
+    ],
+  };
+}
+
+export function listAccessAudit(params?: {
+  limit?: number;
+  subject?: string;
+  allowed?: boolean;
+}): import('@/lib/types').AccessAuditResponse {
+  let rows = structuredClone(mockAccessAudit);
+  if (params?.subject) {
+    rows = rows.filter((r) => r.subject === params.subject);
+  }
+  if (params?.allowed != null) {
+    rows = rows.filter((r) => r.allowed === params.allowed);
+  }
+  const limit = params?.limit ?? 100;
+  rows = rows.slice(0, limit);
+  return {
+    count: rows.length,
+    decisions: rows,
+    viewer: 'mock-admin',
+    admin_view: true,
+  };
+}
+
+export function getPepStatus(): import('@/lib/types').PepStatusResponse {
+  return {
+    mode: 'soft',
+    effective_mode: 'soft',
+    sso_enabled: false,
+    sso_strict_elevation: true,
+    proxy_enabled: true,
+    proxy_base: 'http://controller:8080',
+    v1_via_controller: true,
+    chat_proxy: '/v1/chat/completions',
+    knowledge_search: '/knowledge/search',
+    active_sessions: 0,
+    note: 'mock PEP status',
+  };
+}
+
+export function knowledgeSearch(
+  body: Record<string, unknown>,
+): import('@/lib/types').KnowledgeSearchResponse {
+  const q = String(body.query || '');
+  return {
+    query: q,
+    hits: [
+      {
+        source_uri: 'corpus://demo/welcome.md',
+        score: 0.91,
+        text: `Mock hit for “${q || '…'}” (appliance knowledge).`,
+        title: 'welcome.md',
+      },
+    ],
+    mode: 'hybrid',
+    groups_applied: ['Everyone'],
+    policy_reason: 'mock_allow',
+    resource_uri: 'knowledge://builtin-appliance-knowledge/collections/default',
+    auth: { subject: 'mock-operator', groups: ['Everyone'] },
+  };
+}
+
+export function sqlQuery(
+  body: Record<string, unknown>,
+): import('@/lib/types').SqlQueryResponse {
+  const sql = String(body.sql || '');
+  return {
+    backend: 'sqlite',
+    backend_label: 'sqlite:mock',
+    columns: ['n', 'note'],
+    rows: [[1, `mock result for: ${sql.slice(0, 40)}`]],
+    row_count: 1,
+    truncated: false,
+    policy_reason: 'mock_allow',
+    resource_uri: 'sql://mock-db',
+    auth: { subject: 'mock-operator', groups: ['Admins'] },
+  };
+}
+
+export function listEffectiveTools(): import('@/lib/types').EffectiveToolsResponse {
+  return {
+    allowed_tools: ['knowledge_search', 'knowledge_list', 'knowledge_read', 'sql_query'],
+    denied_tools: [{ tool: 'knowledge_prepare_patch', reason: 'capability_disabled' }],
+    subject: 'mock-operator',
+    count_allowed: 4,
+    count_denied: 1,
+    auth: {
+      subject: 'mock-operator',
+      groups: ['Everyone'],
+      roles: ['user'],
+      source: 'headers',
+    },
+    sso_enabled: false,
+    residual_risks: [],
+    note: 'mock effective tools',
+  };
+}
+
 export function getPlatform(): import('@/lib/types').PlatformSnapshot {
+  mockPlatform = { ...mockPlatform, sources: structuredClone(mockSources) };
   return structuredClone(mockPlatform);
 }
 

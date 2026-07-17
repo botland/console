@@ -324,6 +324,93 @@ export async function getPlatform(): Promise<import('@/lib/types').PlatformSnaps
   return controllerJson<import('@/lib/types').PlatformSnapshot>('/platform');
 }
 
+export async function listSources(): Promise<import('@/lib/types').SourcesResponse> {
+  return controllerJson<import('@/lib/types').SourcesResponse>('/sources');
+}
+
+export async function createSource(
+  body: Record<string, unknown>,
+): Promise<import('@/lib/types').SourceInstanceDto> {
+  return controllerJson<import('@/lib/types').SourceInstanceDto>('/sources', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+export async function patchSource(
+  id: string,
+  body: Record<string, unknown>,
+): Promise<import('@/lib/types').SourceInstanceDto> {
+  return controllerJson<import('@/lib/types').SourceInstanceDto>(
+    `/sources/${encodeURIComponent(id)}`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    },
+  );
+}
+
+export async function deleteSource(id: string): Promise<{ deleted: boolean; id: string }> {
+  return controllerJson(`/sources/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+export async function getAccessSummary(): Promise<
+  import('@/lib/types').AccessSummaryResponse
+> {
+  return controllerJson('/access/summary');
+}
+
+export async function getAccessReady(): Promise<
+  import('@/lib/types').AccessReadyResponse
+> {
+  return controllerJson('/access/ready');
+}
+
+export async function listAccessAudit(params?: {
+  limit?: number;
+  subject?: string;
+  allowed?: boolean;
+}): Promise<import('@/lib/types').AccessAuditResponse> {
+  const q = new URLSearchParams();
+  if (params?.limit != null) q.set('limit', String(params.limit));
+  if (params?.subject) q.set('subject', params.subject);
+  if (params?.allowed != null) q.set('allowed', params.allowed ? 'true' : 'false');
+  const qs = q.toString();
+  return controllerJson(`/access/audit${qs ? `?${qs}` : ''}`);
+}
+
+export async function getPepStatus(): Promise<import('@/lib/types').PepStatusResponse> {
+  return controllerJson('/agent/pep/status');
+}
+
+export async function knowledgeSearch(
+  body: Record<string, unknown>,
+): Promise<import('@/lib/types').KnowledgeSearchResponse> {
+  return controllerJson('/knowledge/search', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+export async function sqlQuery(
+  body: Record<string, unknown>,
+): Promise<import('@/lib/types').SqlQueryResponse> {
+  return controllerJson('/sql/query', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+export async function listEffectiveTools(): Promise<
+  import('@/lib/types').EffectiveToolsResponse
+> {
+  return controllerJson('/agent/tools/effective');
+}
+
 export async function putPlatformTenant(
   tenant_id: string,
 ): Promise<import('@/lib/types').PlatformSnapshot> {

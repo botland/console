@@ -1,15 +1,26 @@
 'use client';
 
+import Link from 'next/link';
+import { useEffect, useState } from 'react';
+import { Shield } from 'lucide-react';
+
 import { GpuBar } from '@/components/GpuBar';
 import { PageError, PageLoading } from '@/components/PageState';
 import { ApplianceBadge } from '@/components/StatusBadge';
 import { Card, PageHeader } from '@/components/ui';
+import { api } from '@/lib/api';
 import { effectiveApplianceState, hasDegradedSignals } from '@/lib/appliance-status';
 import { formatNodeLabelFromNode } from '@/lib/node-label';
 import { useApplianceStatus } from '@/lib/status-context';
+import type { AccessSummaryResponse } from '@/lib/types';
 
 export default function OverviewPage() {
   const { status, error, loading, refresh } = useApplianceStatus();
+  const [access, setAccess] = useState<AccessSummaryResponse | null>(null);
+
+  useEffect(() => {
+    api.getAccessSummary().then(setAccess).catch(() => setAccess(null));
+  }, [status?.config?.appliance_id]);
 
   if (error && !status) {
     return <PageError error={error} onRetry={refresh} />;
@@ -86,6 +97,64 @@ export default function OverviewPage() {
           </div>
         </Card>
       </div>
+
+      {access && (
+        <Card className="mb-8">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <div className="mb-1 flex items-center gap-2 text-sm font-medium text-slate-200">
+                <Shield className="h-4 w-4 text-cyan-400" />
+                Access plane
+                {access.readiness?.overall && (
+                  <span
+                    className={`rounded-md border px-2 py-0.5 text-[11px] font-medium ${
+                      access.readiness.overall === 'ready'
+                        ? 'border-emerald-800/50 bg-emerald-950/40 text-emerald-400'
+                        : access.readiness.overall === 'lab_ok'
+                          ? 'border-sky-800/50 bg-sky-950/40 text-sky-300'
+                          : access.readiness.overall === 'not_ready'
+                            ? 'border-rose-800/50 bg-rose-950/40 text-rose-300'
+                            : 'border-amber-800/50 bg-amber-950/40 text-amber-300'
+                    }`}
+                  >
+                    {access.readiness.overall}
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-500">
+                PEP{' '}
+                <span className="font-mono text-cyan-300/90">
+                  {access.pep.effective_mode || access.pep.mode}
+                </span>
+                {access.pep.sso_enabled ? ' · SSO on' : ' · SSO off'}
+                {access.pep.v1_via_controller ? ' · chat via controller' : ''}
+                {' · '}
+                {access.sessions_active ?? 0} sessions · {access.sources_count ?? 0} sources
+              </p>
+              {access.readiness?.overall_label && (
+                <p className="mt-1 text-xs text-slate-400">{access.readiness.overall_label}</p>
+              )}
+              {access.audit && (
+                <p className="mt-1 text-xs text-slate-500">
+                  Recent decisions: {access.audit.allowed ?? 0} allow ·{' '}
+                  <span className={access.audit.denied ? 'text-rose-300/90' : ''}>
+                    {access.audit.denied ?? 0} deny
+                  </span>
+                  {access.caller?.tools_allowed != null
+                    ? ` · you: ${access.caller.tools_allowed} tools allowed`
+                    : ''}
+                </p>
+              )}
+            </div>
+            <Link
+              href="/access"
+              className="rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-1.5 text-xs font-medium text-cyan-300 hover:bg-cyan-500/15"
+            >
+              Open Access
+            </Link>
+          </div>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {config ? (

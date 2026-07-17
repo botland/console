@@ -491,6 +491,48 @@ export function newInstanceId(): string {
   return `src_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 }
 
+/** Normalize controller /sources (or platform.sources) row to console SourceInstance. */
+export function normalizeSourceInstance(raw: Record<string, unknown> | SourceInstance): SourceInstance {
+  if (
+    raw &&
+    typeof raw === 'object' &&
+    'typeId' in raw &&
+    'enabledPermissionIds' in raw &&
+    'packBound' in raw &&
+    'displayName' in raw &&
+    !('type_id' in raw)
+  ) {
+    return raw as SourceInstance;
+  }
+  const r = raw as Record<string, unknown>;
+  return {
+    id: String(r.id ?? ''),
+    typeId: String(r.typeId ?? r.type_id ?? ''),
+    displayName: String(r.displayName ?? r.display_name ?? ''),
+    config: (r.config as Record<string, string>) ?? {},
+    enabledPermissionIds: (r.enabledPermissionIds ??
+      r.enabled_permission_ids ??
+      []) as string[],
+    groups: (r.groups as string[]) ?? [],
+    packBound: Boolean(r.packBound ?? r.pack_bound),
+    createdAt: String(r.createdAt ?? r.created_at ?? new Date().toISOString()),
+    updatedAt: String(r.updatedAt ?? r.updated_at ?? new Date().toISOString()),
+  };
+}
+
+/** Body for POST/PATCH /sources (camelCase). */
+export function sourceInstanceToWriteBody(inst: SourceInstance): Record<string, unknown> {
+  return {
+    typeId: inst.typeId,
+    displayName: inst.displayName,
+    config: inst.config,
+    enabledPermissionIds: inst.enabledPermissionIds,
+    groups: inst.groups,
+    packBound: inst.packBound,
+    id: inst.id,
+  };
+}
+
 export function createInstance(
   type: SourceTypeDef,
   partial?: Partial<Pick<SourceInstance, 'displayName' | 'config' | 'groups' | 'packBound'>>,

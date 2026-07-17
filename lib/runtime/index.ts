@@ -176,6 +176,64 @@ export async function getPlatform() {
   return isInferedgeRuntime() ? inferedge.getPlatform() : mock.getPlatform();
 }
 
+export async function listSources() {
+  return isInferedgeRuntime() ? inferedge.listSources() : mock.listSources();
+}
+
+export async function createSource(body: Record<string, unknown>) {
+  return isInferedgeRuntime() ? inferedge.createSource(body) : mock.createSource(body);
+}
+
+export async function patchSource(id: string, body: Record<string, unknown>) {
+  return isInferedgeRuntime() ? inferedge.patchSource(id, body) : mock.patchSource(id, body);
+}
+
+export async function deleteSource(id: string) {
+  return isInferedgeRuntime() ? inferedge.deleteSource(id) : mock.deleteSource(id);
+}
+
+export async function getAccessSummary() {
+  return isInferedgeRuntime()
+    ? inferedge.getAccessSummary()
+    : mock.getAccessSummary();
+}
+
+export async function getAccessReady() {
+  return isInferedgeRuntime()
+    ? inferedge.getAccessReady()
+    : mock.getAccessReady();
+}
+
+export async function listAccessAudit(params?: {
+  limit?: number;
+  subject?: string;
+  allowed?: boolean;
+}) {
+  return isInferedgeRuntime()
+    ? inferedge.listAccessAudit(params)
+    : mock.listAccessAudit(params);
+}
+
+export async function getPepStatus() {
+  return isInferedgeRuntime() ? inferedge.getPepStatus() : mock.getPepStatus();
+}
+
+export async function knowledgeSearch(body: Record<string, unknown>) {
+  return isInferedgeRuntime()
+    ? inferedge.knowledgeSearch(body)
+    : mock.knowledgeSearch(body);
+}
+
+export async function sqlQuery(body: Record<string, unknown>) {
+  return isInferedgeRuntime() ? inferedge.sqlQuery(body) : mock.sqlQuery(body);
+}
+
+export async function listEffectiveTools() {
+  return isInferedgeRuntime()
+    ? inferedge.listEffectiveTools()
+    : mock.listEffectiveTools();
+}
+
 export async function putPlatformTenant(tenant_id: string) {
   return isInferedgeRuntime()
     ? inferedge.putPlatformTenant(tenant_id)

@@ -207,6 +207,171 @@ export interface DryRunResult {
   detail: string;
 }
 
+/** Server-side source instance (ACCESS_POLICIES Phase 3 registry). */
+export interface SourceInstanceDto {
+  id: string;
+  typeId: string;
+  type_id?: string;
+  displayName: string;
+  display_name?: string;
+  config: Record<string, string>;
+  enabledPermissionIds: string[];
+  enabled_permission_ids?: string[];
+  groups: string[];
+  packBound: boolean;
+  pack_bound?: boolean;
+  tenantId?: string;
+  createdAt: string;
+  updatedAt: string;
+  resourceUri?: string | null;
+  scheme?: string | null;
+}
+
+export interface SourcesResponse {
+  sources: SourceInstanceDto[];
+  count: number;
+  sso_enabled?: boolean;
+  note?: string;
+}
+
+export interface AccessAuditDecision {
+  id?: number;
+  ts: number;
+  subject: string;
+  tenant_id?: string;
+  action: string;
+  resource: string;
+  allowed: boolean;
+  reason: string;
+  groups_fp?: string;
+  auth_mode?: string;
+  source?: string;
+  detail?: Record<string, unknown>;
+}
+
+export interface AccessAuditResponse {
+  count: number;
+  decisions: AccessAuditDecision[];
+  viewer?: string;
+  admin_view?: boolean;
+}
+
+export interface PepStatusResponse {
+  mode: string;
+  effective_mode?: string;
+  sso_enabled?: boolean;
+  sso_strict_elevation?: boolean;
+  proxy_enabled?: boolean;
+  proxy_base?: string;
+  v1_via_controller?: boolean;
+  litellm_base?: string;
+  chat_proxy?: string;
+  knowledge_search?: string;
+  active_sessions?: number;
+  note?: string;
+}
+
+export interface KnowledgeSearchHit {
+  chunk_id?: string;
+  source_uri?: string;
+  score?: number;
+  text?: string;
+  title?: string;
+}
+
+export interface KnowledgeSearchResponse {
+  query: string;
+  hits: KnowledgeSearchHit[];
+  mode?: string;
+  groups_applied?: string[];
+  policy_reason?: string;
+  resource_uri?: string;
+  auth?: { subject?: string; groups?: string[] };
+}
+
+export interface SqlQueryResponse {
+  backend?: string;
+  backend_label?: string;
+  columns: string[];
+  rows: unknown[][];
+  row_count?: number;
+  truncated?: boolean;
+  policy_reason?: string;
+  resource_uri?: string;
+  auth?: { subject?: string; groups?: string[] };
+}
+
+export interface AccessSummaryResponse {
+  pep: {
+    mode: string;
+    effective_mode?: string;
+    proxy_enabled?: boolean;
+    v1_via_controller?: boolean;
+    sso_enabled?: boolean;
+  };
+  sessions_active?: number;
+  sources_count?: number;
+  audit?: {
+    sample_size?: number;
+    allowed?: number;
+    denied?: number;
+  };
+  caller?: {
+    subject?: string;
+    groups?: string[];
+    source?: string;
+    tools_allowed?: number;
+    tools_denied?: number;
+  };
+  readiness?: {
+    overall?: string;
+    overall_label?: string;
+  } | null;
+  links?: Record<string, string>;
+}
+
+export interface AccessReadyCheck {
+  id: string;
+  title: string;
+  status: 'pass' | 'warn' | 'fail' | 'info';
+  detail: string;
+  remediation?: string;
+}
+
+export interface AccessReadyResponse {
+  overall: string;
+  overall_label: string;
+  checks: AccessReadyCheck[];
+  config?: Record<string, unknown>;
+  checklist?: string[];
+}
+
+export interface EffectiveToolsResponse {
+  allowed_tools: string[];
+  denied_tools: Array<{ tool: string; reason: string }>;
+  decisions?: Array<{
+    tool: string;
+    allowed: boolean;
+    reason: string;
+    capability_id?: string | null;
+    resource?: string;
+  }>;
+  subject?: string;
+  count_allowed?: number;
+  count_denied?: number;
+  auth?: {
+    subject?: string;
+    groups?: string[];
+    roles?: string[];
+    tenant_id?: string;
+    source?: string;
+    auth_mode?: string;
+  };
+  sso_enabled?: boolean;
+  residual_risks?: string[];
+  note?: string;
+}
+
 export interface PlatformSnapshot {
   tenant_id: string;
   rag: RagConfig;
@@ -235,6 +400,8 @@ export interface PlatformSnapshot {
     granted_at?: string | null;
     ack_message?: string | null;
   }>;
+  /** Present when controller registry is available (Phase 3). */
+  sources?: SourceInstanceDto[];
   allow_rw_capabilities: boolean;
   agent_runtime: string;
   versions: Array<{
@@ -328,6 +495,17 @@ export interface ActualRuntimeStatus {
   current_model?: string | null;
 }
 
+export interface AccessPlaneStatus {
+  overall?: string | null;
+  overall_label?: string | null;
+  pep_mode?: string | null;
+  effective_pep_mode?: string | null;
+  sso_enabled?: boolean | null;
+  v1_via_controller?: boolean | null;
+  fail_count?: number;
+  warn_count?: number;
+}
+
 export interface ApplianceStatus {
   state: ApplianceState;
   last_error: string | null;
@@ -339,6 +517,8 @@ export interface ApplianceStatus {
     file: string;
   };
   actual?: ActualRuntimeStatus;
+  /** Present when controller reports access-plane readiness */
+  access_plane?: AccessPlaneStatus | null;
 }
 
 export interface ClusterInventory {

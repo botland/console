@@ -27,6 +27,19 @@ describe('console-capabilities', () => {
     );
     expect(items).toContain('config');
     expect(items).toContain('deployments');
+    expect(items).toContain('access');
+    expect(items).toContain('packs');
+  });
+
+  it('hides access audit on distributed worker', () => {
+    const items = visibleNavItems(
+      ctx(
+        { local_node_id: 'node-2', is_head: false, head_api_url: 'http://10.0.0.1/api' },
+        { serving_mode: 'distributed', compute_backend: 'federation' },
+      ),
+    );
+    expect(items).not.toContain('access');
+    expect(items).not.toContain('packs');
   });
 
   it('hides config for distributed worker', () => {

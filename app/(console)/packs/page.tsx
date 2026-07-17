@@ -29,7 +29,9 @@ import {
   instanceStatus,
   loadStoredInstances,
   mergeInstancesWithPacks,
+  normalizeSourceInstance,
   saveStoredInstances,
+  sourceInstanceToWriteBody,
   statusDotClass,
   statusLabel,
   trustLabel,
@@ -57,6 +59,8 @@ export default function PacksPage() {
   const [platform, setPlatform] = useState<PlatformSnapshot | null>(null);
   const [pending, setPending] = useState<PendingChange[]>([]);
   const [instances, setInstances] = useState<SourceInstance[]>([]);
+  /** When true, CRUD goes to controller /sources (Phase 3 registry). */
+  const [useServerRegistry, setUseServerRegistry] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busyKey, setBusyKey] = useState<string | null>(null);
@@ -71,10 +75,15 @@ export default function PacksPage() {
   const [draftConfigs, setDraftConfigs] = useState<Record<string, Record<string, string>>>({});
   const [draftNames, setDraftNames] = useState<Record<string, string>>({});
 
-  const persist = useCallback((next: SourceInstance[]) => {
-    setInstances(next);
-    saveStoredInstances(next);
-  }, []);
+  const persist = useCallback(
+    (next: SourceInstance[]) => {
+      setInstances(next);
+      if (!useServerRegistry) {
+        saveStoredInstances(next);
+      }
+    },
+    [useServerRegistry],
+  );
 
   const load = useCallback(() => {
     setLoading(true);
@@ -83,15 +92,26 @@ export default function PacksPage() {
       api.listCapabilities(),
       api.getPlatform(),
       api.listPendingChanges('pending').catch(() => ({ mutations: [] as PendingChange[], count: 0 })),
+      api.listSources().catch(() => null),
     ])
-      .then(([caps, plat, muts]) => {
+      .then(([caps, plat, muts, sourcesResp]) => {
         setData(caps);
         setPlatform(plat);
         setTenantDraft(plat.tenant_id);
         setRagDraft(plat.rag);
         setPending(muts.mutations ?? []);
-        const merged = mergeInstancesWithPacks(loadStoredInstances(), caps.capabilities);
-        setInstances(merged);
+        if (sourcesResp && Array.isArray(sourcesResp.sources)) {
+          setUseServerRegistry(true);
+          setInstances(
+            sourcesResp.sources.map((s) =>
+              normalizeSourceInstance(s as unknown as Record<string, unknown>),
+            ),
+          );
+        } else {
+          setUseServerRegistry(false);
+          const merged = mergeInstancesWithPacks(loadStoredInstances(), caps.capabilities);
+          setInstances(merged);
+        }
         setLoading(false);
       })
       .catch((e) => {
@@ -119,21 +139,33 @@ export default function PacksPage() {
       }
     }
 
-    // Policy-only instances (extra multi-instance rows): local state until registry API
+    // Policy-only instances (extra multi-instance rows) or server registry without pack bridge
     if (!instance.packBound || !permission.capabilityId) {
       const nextIds = isEnabling
         ? [...instance.enabledPermissionIds, permission.id]
         : instance.enabledPermissionIds.filter((id) => id !== permission.id);
-      const next = instances.map((i) =>
-        i.id === instance.id
-          ? {
-              ...i,
-              enabledPermissionIds: nextIds,
-              updatedAt: new Date().toISOString(),
-            }
-          : i,
-      );
-      persist(next);
+      const updatedLocal = {
+        ...instance,
+        enabledPermissionIds: nextIds,
+        updatedAt: new Date().toISOString(),
+      };
+      if (useServerRegistry) {
+        setBusyKey(`${instance.id}:${permission.id}`);
+        setError(null);
+        try {
+          const saved = await api.patchSource(instance.id, {
+            enabledPermissionIds: nextIds,
+          });
+          const normalized = normalizeSourceInstance(saved as unknown as Record<string, unknown>);
+          persist(instances.map((i) => (i.id === instance.id ? normalized : i)));
+        } catch (e) {
+          setError(e instanceof ApiError ? e.message : 'Failed to update source permissions');
+        } finally {
+          setBusyKey(null);
+        }
+        return;
+      }
+      persist(instances.map((i) => (i.id === instance.id ? updatedLocal : i)));
       return;
     }
 
@@ -179,13 +211,32 @@ export default function PacksPage() {
       const nextIds = isEnabling
         ? [...new Set([...instance.enabledPermissionIds, permission.id])]
         : instance.enabledPermissionIds.filter((id) => id !== permission.id);
-      persist(
-        instances.map((i) =>
-          i.id === instance.id
-            ? { ...i, enabledPermissionIds: nextIds, updatedAt: new Date().toISOString() }
-            : i,
-        ),
-      );
+      if (useServerRegistry) {
+        try {
+          const saved = await api.patchSource(instance.id, {
+            enabledPermissionIds: nextIds,
+          });
+          const normalized = normalizeSourceInstance(saved as unknown as Record<string, unknown>);
+          persist(instances.map((i) => (i.id === instance.id ? normalized : i)));
+        } catch {
+          // Pack enablement succeeded; keep local permission state if registry patch fails
+          persist(
+            instances.map((i) =>
+              i.id === instance.id
+                ? { ...i, enabledPermissionIds: nextIds, updatedAt: new Date().toISOString() }
+                : i,
+            ),
+          );
+        }
+      } else {
+        persist(
+          instances.map((i) =>
+            i.id === instance.id
+              ? { ...i, enabledPermissionIds: nextIds, updatedAt: new Date().toISOString() }
+              : i,
+          ),
+        );
+      }
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Failed to update permission');
     } finally {
@@ -268,7 +319,7 @@ export default function PacksPage() {
     }
   };
 
-  const addInstance = (type: SourceTypeDef) => {
+  const addInstance = async (type: SourceTypeDef) => {
     if (!type.multiInstance) {
       const existing = instances.find((i) => i.typeId === type.id);
       if (existing) {
@@ -290,6 +341,22 @@ export default function PacksPage() {
         : type.displayName,
       packBound: Boolean(packBound),
     });
+    if (useServerRegistry) {
+      setError(null);
+      try {
+        const saved = await api.createSource(sourceInstanceToWriteBody(inst));
+        const normalized = normalizeSourceInstance(saved as unknown as Record<string, unknown>);
+        persist([...instances, normalized]);
+        setExpandedId(normalized.id);
+        setConfigOpenId(normalized.id);
+        setDraftConfigs((d) => ({ ...d, [normalized.id]: { ...normalized.config } }));
+        setDraftNames((d) => ({ ...d, [normalized.id]: normalized.displayName }));
+        setAddMenuOpen(false);
+      } catch (e) {
+        setError(e instanceof ApiError ? e.message : 'Failed to create source on appliance');
+      }
+      return;
+    }
     const next = [...instances, inst];
     persist(next);
     setExpandedId(inst.id);
@@ -299,7 +366,7 @@ export default function PacksPage() {
     setAddMenuOpen(false);
   };
 
-  const removeInstance = (instance: SourceInstance) => {
+  const removeInstance = async (instance: SourceInstance) => {
     const type = getSourceType(instance.typeId);
     if (type?.singletonBuiltin) {
       setError('Built-in appliance knowledge cannot be removed.');
@@ -311,11 +378,20 @@ export default function PacksPage() {
     ) {
       return;
     }
+    if (useServerRegistry) {
+      setError(null);
+      try {
+        await api.deleteSource(instance.id);
+      } catch (e) {
+        setError(e instanceof ApiError ? e.message : 'Failed to remove source');
+        return;
+      }
+    }
     persist(instances.filter((i) => i.id !== instance.id));
     if (expandedId === instance.id) setExpandedId(null);
   };
 
-  const saveInstanceConfig = (instance: SourceInstance) => {
+  const saveInstanceConfig = async (instance: SourceInstance) => {
     const type = getSourceType(instance.typeId);
     if (!type) return;
     const config = draftConfigs[instance.id] ?? instance.config;
@@ -325,6 +401,18 @@ export default function PacksPage() {
       return;
     }
     setError(null);
+    if (useServerRegistry) {
+      try {
+        const saved = await api.patchSource(instance.id, { displayName, config });
+        const normalized = normalizeSourceInstance(saved as unknown as Record<string, unknown>);
+        persist(instances.map((i) => (i.id === instance.id ? normalized : i)));
+        setConfigOpenId(null);
+        return;
+      } catch (e) {
+        setError(e instanceof ApiError ? e.message : 'Failed to save source config');
+        return;
+      }
+    }
     persist(
       instances.map((i) =>
         i.id === instance.id
@@ -340,7 +428,7 @@ export default function PacksPage() {
     setConfigOpenId(null);
   };
 
-  const toggleGroup = (instance: SourceInstance, group: string) => {
+  const toggleGroup = async (instance: SourceInstance, group: string) => {
     const has = instance.groups.includes(group);
     const groups = has
       ? instance.groups.filter((g) => g !== group)
@@ -350,6 +438,16 @@ export default function PacksPage() {
       return;
     }
     setError(null);
+    if (useServerRegistry) {
+      try {
+        const saved = await api.patchSource(instance.id, { groups });
+        const normalized = normalizeSourceInstance(saved as unknown as Record<string, unknown>);
+        persist(instances.map((i) => (i.id === instance.id ? normalized : i)));
+      } catch (e) {
+        setError(e instanceof ApiError ? e.message : 'Failed to update groups');
+      }
+      return;
+    }
     persist(
       instances.map((i) =>
         i.id === instance.id

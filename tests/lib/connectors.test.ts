@@ -6,6 +6,7 @@ import {
   instanceConfigComplete,
   instanceStatus,
   lookupCapability,
+  normalizeSourceInstance,
   seedInstancesFromPacks,
   trustLabel,
   unmappedCapabilities,
@@ -35,6 +36,25 @@ describe('source types and instances', () => {
     expect(hit?.connector.id).toBe('appliance-knowledge');
     expect(hit?.permission.trust).toBe('read');
     expect(lookupCapability('sql.query')?.connector.id).toBe('postgresql');
+  });
+
+  it('normalizes controller source registry rows', () => {
+    const inst = normalizeSourceInstance({
+      id: 'finance-db',
+      type_id: 'postgresql',
+      display_name: 'Finance',
+      config: { database: 'inv' },
+      enabled_permission_ids: ['read'],
+      groups: ['finance'],
+      pack_bound: false,
+      created_at: 't0',
+      updated_at: 't1',
+      resourceUri: 'sql://finance-db/inv',
+    });
+    expect(inst.typeId).toBe('postgresql');
+    expect(inst.displayName).toBe('Finance');
+    expect(inst.enabledPermissionIds).toEqual(['read']);
+    expect(inst.packBound).toBe(false);
   });
 
   it('treats PostgreSQL and GitHub as multi-instance application sources', () => {

@@ -12,6 +12,7 @@ import {
   Package,
   Server,
   Settings,
+  Shield,
   Sliders,
   LifeBuoy,
 } from 'lucide-react';
@@ -37,6 +38,7 @@ const NAV_META: Record<
   nodes: { label: 'Nodes', icon: Server },
   storage: { label: 'Storage', icon: HardDrive },
   packs: { label: 'Sources', icon: Package },
+  access: { label: 'Access', icon: Shield },
   workflows: { label: 'Workflows', icon: GitBranch },
   system: { label: 'System', icon: Settings },
   support: { label: 'Support', icon: LifeBuoy },
