@@ -354,10 +354,16 @@ export default function PacksPage() {
       const docs = result.documents ?? 0;
       const chunks = result.chunks ?? 0;
       const errs = result.errors?.length ?? 0;
-      setReindexStatus(
-        `Reindex finished: ${docs} documents, ${chunks} chunks` +
-          (errs ? ` (${errs} file errors)` : ''),
-      );
+      if (result.noop) {
+        setReindexStatus(
+          'Nothing to reindex (empty corpus and empty collection) — no wipe performed.',
+        );
+      } else {
+        setReindexStatus(
+          `Reindex finished: ${docs} documents, ${chunks} chunks` +
+            (errs ? ` (${errs} file errors)` : ''),
+        );
+      }
       try {
         setRagHealth(await api.getPlatformRagHealth());
       } catch {
