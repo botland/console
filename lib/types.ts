@@ -137,6 +137,49 @@ export interface RagConfig {
   chunker_version: string;
   default_corpus_id: string;
   hybrid_default: boolean;
+  /** When true, retrieval refuses hash fallback for vector ingest/search */
+  require_real_embeddings?: boolean;
+}
+
+export interface RagChecklistItem {
+  id: string;
+  status: 'ok' | 'todo' | 'warn' | 'error' | string;
+  detail: string;
+}
+
+export interface RagHealthResponse {
+  rag: RagConfig;
+  retrieval: {
+    status?: string;
+    qdrant?: string;
+    collection?: string;
+    points?: number | null;
+    embedding_model_id?: string;
+    indexed_embedding_model_id?: string | null;
+    vector_size?: number | null;
+    config_embedding_dim?: number | null;
+    require_real_embeddings?: boolean;
+    uses_hash_fallback?: boolean;
+    reindex_needed?: boolean;
+    detail?: string;
+  };
+  checklist: RagChecklistItem[];
+  ready: boolean;
+}
+
+export interface CorpusReindexResponse {
+  ok: boolean;
+  actor?: string;
+  tenant_id?: string;
+  corpus_id?: string;
+  documents?: number;
+  chunks?: number;
+  embedding_model_id?: string;
+  previous_embedding_model_id?: string;
+  errors?: string[];
+  noop?: boolean;
+  collection_recreated?: boolean;
+  [key: string]: unknown;
 }
 
 export type WorkflowStatus = 'draft' | 'review' | 'published' | 'deprecated';
@@ -412,6 +455,19 @@ export interface PlatformSnapshot {
     created_at: string;
     created_by?: string | null;
   }>;
+}
+
+/** PUT /platform/rag may include retrieval push status beyond the snapshot. */
+export interface PlatformRagPutResponse extends PlatformSnapshot {
+  ok?: boolean;
+  warning?: string;
+  retrieval_sync?: {
+    ok?: boolean;
+    error?: string;
+    detail?: string;
+    status?: number;
+    config?: unknown;
+  };
 }
 
 export interface DeploymentConfig {

@@ -67,7 +67,11 @@ export default function PacksPage() {
   const [mutationBusy, setMutationBusy] = useState<string | null>(null);
   const [tenantDraft, setTenantDraft] = useState('default');
   const [ragDraft, setRagDraft] = useState<RagConfig | null>(null);
+  const [ragHealth, setRagHealth] = useState<import('@/lib/types').RagHealthResponse | null>(null);
+  const [ragSaveWarning, setRagSaveWarning] = useState<string | null>(null);
+  const [reindexStatus, setReindexStatus] = useState<string | null>(null);
   const [savingPlatform, setSavingPlatform] = useState(false);
+  const [reindexing, setReindexing] = useState(false);
   const [developerMode, setDeveloperMode] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [configOpenId, setConfigOpenId] = useState<string | null>(null);
@@ -93,12 +97,14 @@ export default function PacksPage() {
       api.getPlatform(),
       api.listPendingChanges('pending').catch(() => ({ mutations: [] as PendingChange[], count: 0 })),
       api.listSources().catch(() => null),
+      api.getPlatformRagHealth().catch(() => null),
     ])
-      .then(([caps, plat, muts, sourcesResp]) => {
+      .then(([caps, plat, muts, sourcesResp, health]) => {
         setData(caps);
         setPlatform(plat);
         setTenantDraft(plat.tenant_id);
         setRagDraft(plat.rag);
+        setRagHealth(health);
         setPending(muts.mutations ?? []);
         if (sourcesResp && Array.isArray(sourcesResp.sources)) {
           setUseServerRegistry(true);
@@ -306,6 +312,7 @@ export default function PacksPage() {
     if (!ragDraft) return;
     setSavingPlatform(true);
     setError(null);
+    setRagSaveWarning(null);
     try {
       const snap = await api.putPlatformRag({
         ...ragDraft,
@@ -313,10 +320,59 @@ export default function PacksPage() {
       });
       setPlatform(snap);
       setRagDraft(snap.rag);
+      if (snap.warning || snap.retrieval_sync?.ok === false) {
+        setRagSaveWarning(
+          snap.warning ||
+            'Saved locally; retrieval was not updated. Check retrieval service and re-save.',
+        );
+      }
+      try {
+        setRagHealth(await api.getPlatformRagHealth());
+      } catch {
+        /* checklist optional */
+      }
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Failed to save knowledge settings');
     } finally {
       setSavingPlatform(false);
+    }
+  };
+
+  const runReindex = async () => {
+    const ok = window.confirm(
+      'This deletes the vector collection and re-embeds the entire RO corpus with the current embedding model. Continue?',
+    );
+    if (!ok) return;
+    setReindexing(true);
+    setError(null);
+    setReindexStatus(null);
+    try {
+      const result = await api.reindexCorpus({
+        tenant_id: tenantDraft.trim() || ragDraft?.tenant_id || 'default',
+        corpus_id: ragDraft?.default_corpus_id || 'appliance',
+      });
+      const docs = result.documents ?? 0;
+      const chunks = result.chunks ?? 0;
+      const errs = result.errors?.length ?? 0;
+      if (result.noop) {
+        setReindexStatus(
+          'Nothing to reindex (empty corpus and empty collection) — no wipe performed.',
+        );
+      } else {
+        setReindexStatus(
+          `Reindex finished: ${docs} documents, ${chunks} chunks` +
+            (errs ? ` (${errs} file errors)` : ''),
+        );
+      }
+      try {
+        setRagHealth(await api.getPlatformRagHealth());
+      } catch {
+        /* optional */
+      }
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Reindex failed');
+    } finally {
+      setReindexing(false);
     }
   };
 
@@ -982,42 +1038,136 @@ export default function PacksPage() {
                 </div>
               </div>
               {ragDraft && (
-                <div className="grid gap-3 border-t border-slate-800 pt-4 sm:grid-cols-3">
+                <div className="space-y-4 border-t border-slate-800 pt-4">
                   <div>
-                    <Label>Embedding model id</Label>
-                    <Input
-                      className="mt-1"
-                      value={ragDraft.embedding_model_id}
-                      onChange={(e) =>
-                        setRagDraft({ ...ragDraft, embedding_model_id: e.target.value })
-                      }
-                      placeholder="embedding"
-                    />
+                    <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                      Production knowledge checklist
+                    </div>
+                    <ol className="mt-2 list-decimal space-y-1 pl-5 text-xs text-slate-400">
+                      <li>
+                        Deployments → add a model with role <strong className="text-slate-300">Embedding</strong>{' '}
+                        (serves LiteLLM alias <code className="text-slate-400">embedding</code>).
+                      </li>
+                      <li>
+                        Set embedding model id below to <code className="text-slate-400">embedding</code>{' '}
+                        (or the deployment display name), match embedding dim to the model, then Save.
+                      </li>
+                      <li>
+                        Click <strong className="text-slate-300">Reindex corpus</strong> so stored vectors match
+                        the live model (required after any model/dim change).
+                      </li>
+                      <li>
+                        Optional: enable <strong className="text-slate-300">Require real embeddings</strong> so
+                        hash fallback cannot silently degrade search quality.
+                      </li>
+                    </ol>
+                    {ragHealth && (
+                      <ul className="mt-3 space-y-1 text-xs">
+                        {ragHealth.checklist.map((item) => (
+                          <li key={item.id} className="flex gap-2">
+                            <span
+                              className={
+                                item.status === 'ok'
+                                  ? 'text-emerald-400'
+                                  : item.status === 'error'
+                                    ? 'text-rose-400'
+                                    : item.status === 'warn'
+                                      ? 'text-amber-400'
+                                      : 'text-sky-400'
+                              }
+                            >
+                              [{item.status}]
+                            </span>
+                            <span className="text-slate-400">{item.detail}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </div>
-                  <div>
-                    <Label>Chunker version</Label>
-                    <Input
-                      className="mt-1"
-                      value={ragDraft.chunker_version}
-                      onChange={(e) =>
-                        setRagDraft({ ...ragDraft, chunker_version: e.target.value })
-                      }
-                    />
-                  </div>
-                  <div>
-                    <Label>Default corpus</Label>
-                    <Input
-                      className="mt-1"
-                      value={ragDraft.default_corpus_id}
-                      onChange={(e) =>
-                        setRagDraft({ ...ragDraft, default_corpus_id: e.target.value })
-                      }
-                    />
-                  </div>
-                  <div className="sm:col-span-3">
-                    <Button variant="secondary" disabled={savingPlatform} onClick={saveRag}>
-                      Save knowledge settings
-                    </Button>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <div>
+                      <Label>Embedding model id</Label>
+                      <Input
+                        className="mt-1"
+                        value={ragDraft.embedding_model_id}
+                        onChange={(e) =>
+                          setRagDraft({ ...ragDraft, embedding_model_id: e.target.value })
+                        }
+                        placeholder="embedding"
+                      />
+                    </div>
+                    <div>
+                      <Label>Embedding dim</Label>
+                      <Input
+                        className="mt-1"
+                        type="number"
+                        value={ragDraft.embedding_dim}
+                        onChange={(e) =>
+                          setRagDraft({
+                            ...ragDraft,
+                            embedding_dim: Number(e.target.value) || 384,
+                          })
+                        }
+                      />
+                    </div>
+                    <div>
+                      <Label>Default corpus</Label>
+                      <Input
+                        className="mt-1"
+                        value={ragDraft.default_corpus_id}
+                        onChange={(e) =>
+                          setRagDraft({ ...ragDraft, default_corpus_id: e.target.value })
+                        }
+                      />
+                    </div>
+                    <div>
+                      <Label>Chunker version</Label>
+                      <Input
+                        className="mt-1"
+                        value={ragDraft.chunker_version}
+                        onChange={(e) =>
+                          setRagDraft({ ...ragDraft, chunker_version: e.target.value })
+                        }
+                      />
+                    </div>
+                    <div className="flex items-end sm:col-span-2">
+                      <label className="flex cursor-pointer items-center gap-2 text-xs text-slate-300">
+                        <input
+                          type="checkbox"
+                          className="rounded border-slate-600 bg-slate-900"
+                          checked={Boolean(ragDraft.require_real_embeddings)}
+                          onChange={(e) =>
+                            setRagDraft({
+                              ...ragDraft,
+                              require_real_embeddings: e.target.checked,
+                            })
+                          }
+                        />
+                        Require real embeddings (fail closed — no hash fallback)
+                      </label>
+                    </div>
+                    <div className="flex flex-wrap gap-2 sm:col-span-3">
+                      <Button variant="secondary" disabled={savingPlatform} onClick={saveRag}>
+                        Save knowledge settings
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        disabled={reindexing || savingPlatform}
+                        onClick={runReindex}
+                      >
+                        {reindexing ? 'Reindexing…' : 'Reindex corpus'}
+                      </Button>
+                    </div>
+                    {ragSaveWarning ? (
+                      <p className="sm:col-span-3 text-xs text-amber-300/95" role="status">
+                        {ragSaveWarning}
+                      </p>
+                    ) : null}
+                    {reindexStatus ? (
+                      <p className="sm:col-span-3 text-xs text-emerald-300/90" role="status">
+                        {reindexStatus}
+                      </p>
+                    ) : null}
                   </div>
                 </div>
               )}

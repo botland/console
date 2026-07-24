@@ -423,11 +423,27 @@ export async function putPlatformTenant(
 
 export async function putPlatformRag(
   rag: import('@/lib/types').RagConfig,
-): Promise<import('@/lib/types').PlatformSnapshot> {
-  return controllerJson<import('@/lib/types').PlatformSnapshot>('/platform/rag', {
+): Promise<import('@/lib/types').PlatformRagPutResponse> {
+  return controllerJson<import('@/lib/types').PlatformRagPutResponse>('/platform/rag', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(rag),
+  });
+}
+
+export async function getPlatformRagHealth(): Promise<import('@/lib/types').RagHealthResponse> {
+  return controllerJson<import('@/lib/types').RagHealthResponse>('/platform/rag/health');
+}
+
+export async function reindexCorpus(body?: {
+  tenant_id?: string;
+  corpus_id?: string;
+  path_prefix?: string;
+}): Promise<import('@/lib/types').CorpusReindexResponse> {
+  return controllerJson<import('@/lib/types').CorpusReindexResponse>('/corpus/reindex', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body ?? {}),
   });
 }
 

@@ -170,7 +170,7 @@ export const SOURCE_TYPES: SourceTypeDef[] = [
       {
         key: 'host',
         label: 'Host',
-        placeholder: 'db.internal.example.com',
+        placeholder: 'postgres-sandbox or db.internal.example.com',
         required: true,
       },
       {
@@ -216,7 +216,8 @@ export const SOURCE_TYPES: SourceTypeDef[] = [
         capabilityId: 'sql.query',
       },
     ],
-    connectHint: 'Add one instance per database or DB role (e.g. analytics RO vs app RO).',
+    connectHint:
+      'Add one instance per database or DB role. Lab: OWNEDGE_POSTGRES_SANDBOX=true seeds customers/tickets on postgres-sandbox (see configs/mcp/sql/README.md).',
   },
   {
     id: 'github',
