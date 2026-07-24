@@ -315,11 +315,24 @@ export function DeploymentForm({
             <option value="embedding">Embedding (RAG /v1/embeddings)</option>
           </Select>
           {dep.role === 'embedding' && (
-            <p className="mt-1 text-xs text-slate-500">
-              Serves LiteLLM <code className="text-slate-400">embedding</code> alias.
-              Set retrieval <code className="text-slate-400">EMBEDDING_MODEL=embedding</code>{' '}
-              (or this display name), then reindex.
-            </p>
+            <div className="mt-1 space-y-1 text-xs text-slate-500">
+              <p>
+                Serves LiteLLM alias <code className="text-slate-400">embedding</code> (and the
+                display name). Production knowledge path:
+              </p>
+              <ol className="list-decimal space-y-0.5 pl-4">
+                <li>Save this deployment and wait until it is ready.</li>
+                <li>
+                  Sources → developer platform: set embedding model id to{' '}
+                  <code className="text-slate-400">embedding</code>, save, then{' '}
+                  <strong className="font-medium text-slate-400">Reindex corpus</strong>.
+                </li>
+                <li>
+                  Optional env bootstrap: <code className="text-slate-400">EMBEDDING_MODEL=embedding</code>{' '}
+                  in <code className="text-slate-400">.env</code> (platform save overrides at runtime).
+                </li>
+              </ol>
+            </div>
           )}
         </div>
         <div>

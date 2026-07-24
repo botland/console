@@ -431,6 +431,22 @@ export async function putPlatformRag(
   });
 }
 
+export async function getPlatformRagHealth(): Promise<import('@/lib/types').RagHealthResponse> {
+  return controllerJson<import('@/lib/types').RagHealthResponse>('/platform/rag/health');
+}
+
+export async function reindexCorpus(body?: {
+  tenant_id?: string;
+  corpus_id?: string;
+  path_prefix?: string;
+}): Promise<import('@/lib/types').CorpusReindexResponse> {
+  return controllerJson<import('@/lib/types').CorpusReindexResponse>('/corpus/reindex', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body ?? {}),
+  });
+}
+
 export async function listWorkflows(
   tenant_id?: string,
 ): Promise<{ workflows: import('@/lib/types').WorkflowRecord[] }> {

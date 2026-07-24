@@ -838,6 +838,7 @@ let mockPlatform: import('@/lib/types').PlatformSnapshot = {
     chunker_version: 'plain-v1',
     default_corpus_id: 'appliance',
     hybrid_default: true,
+    require_real_embeddings: false,
   },
   prompts: [],
   acl: {
@@ -1137,6 +1138,65 @@ export function putPlatformRag(
 ): import('@/lib/types').PlatformSnapshot {
   mockPlatform = { ...mockPlatform, rag, tenant_id: rag.tenant_id || mockPlatform.tenant_id };
   return structuredClone(mockPlatform);
+}
+
+export function getPlatformRagHealth(): import('@/lib/types').RagHealthResponse {
+  const rag = structuredClone(mockPlatform.rag);
+  const model = (rag.embedding_model_id || '').trim();
+  const usesHash = !model;
+  const checklist: import('@/lib/types').RagChecklistItem[] = [
+    {
+      id: 'embedding_model',
+      status: model ? 'ok' : 'todo',
+      detail: model
+        ? `platform embedding_model_id=${model}`
+        : "Set embedding_model_id to 'embedding' (LiteLLM alias) or the deployment display name",
+    },
+    {
+      id: 'retrieval',
+      status: 'ok',
+      detail: 'mock retrieval healthy',
+    },
+    {
+      id: 'reindex',
+      status: usesHash ? 'warn' : 'ok',
+      detail: usesHash
+        ? 'Hash fallback active — deploy Embedding role, save RAG settings, reindex'
+        : 'Index model matches current embedding_model_id (or empty corpus)',
+    },
+  ];
+  return {
+    rag,
+    retrieval: {
+      status: usesHash ? 'ok' : 'ok',
+      points: 0,
+      embedding_model_id: model || 'hash-fallback-384',
+      uses_hash_fallback: usesHash,
+      reindex_needed: false,
+      require_real_embeddings: Boolean(rag.require_real_embeddings),
+    },
+    checklist,
+    ready: checklist.every((c) => c.status === 'ok'),
+  };
+}
+
+export function reindexCorpus(_body?: {
+  tenant_id?: string;
+  corpus_id?: string;
+  path_prefix?: string;
+}): import('@/lib/types').CorpusReindexResponse {
+  const model = mockPlatform.rag.embedding_model_id || 'hash-fallback-384';
+  return {
+    ok: true,
+    actor: 'mock',
+    tenant_id: mockPlatform.tenant_id,
+    corpus_id: mockPlatform.rag.default_corpus_id || 'appliance',
+    documents: 0,
+    chunks: 0,
+    embedding_model_id: model,
+    previous_embedding_model_id: model,
+    errors: [],
+  };
 }
 
 let mockWorkflows: import('@/lib/types').WorkflowRecord[] = [];

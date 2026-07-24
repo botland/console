@@ -244,6 +244,20 @@ export async function putPlatformRag(rag: import('@/lib/types').RagConfig) {
   return isInferedgeRuntime() ? inferedge.putPlatformRag(rag) : mock.putPlatformRag(rag);
 }
 
+export async function getPlatformRagHealth() {
+  return isInferedgeRuntime()
+    ? inferedge.getPlatformRagHealth()
+    : mock.getPlatformRagHealth();
+}
+
+export async function reindexCorpus(body?: {
+  tenant_id?: string;
+  corpus_id?: string;
+  path_prefix?: string;
+}) {
+  return isInferedgeRuntime() ? inferedge.reindexCorpus(body) : mock.reindexCorpus(body);
+}
+
 export async function listWorkflows(tenant_id?: string) {
   return isInferedgeRuntime() ? inferedge.listWorkflows(tenant_id) : mock.listWorkflows(tenant_id);
 }

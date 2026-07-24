@@ -220,6 +220,16 @@ export const api = {
       body: JSON.stringify(rag),
     }),
 
+  getPlatformRagHealth: () =>
+    fetchJson<import('@/lib/types').RagHealthResponse>('/api/platform/rag/health'),
+
+  reindexCorpus: (body?: { tenant_id?: string; corpus_id?: string; path_prefix?: string }) =>
+    fetchJson<import('@/lib/types').CorpusReindexResponse>('/api/platform/rag/reindex', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body ?? {}),
+    }),
+
   listSources: () => fetchJson<import('@/lib/types').SourcesResponse>('/api/sources'),
 
   createSource: (body: Record<string, unknown>) =>
