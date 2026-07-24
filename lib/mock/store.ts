@@ -1054,7 +1054,7 @@ export function getPepStatus(): import('@/lib/types').PepStatusResponse {
     proxy_base: 'http://controller:8080',
     v1_via_controller: true,
     chat_proxy: '/v1/chat/completions',
-    corpus_search: '/corpus/search',
+    knowledge_search: '/corpus/search',
     active_sessions: 0,
     note: 'mock PEP status',
   };
