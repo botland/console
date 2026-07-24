@@ -32,12 +32,48 @@ export type StatusResponse = ApplianceStatus & {
   gateway: GatewayInfo | null;
 };
 
+/** Extract operator-facing message from FastAPI / controller / BFF error JSON. */
+export function messageFromErrorBody(err: unknown, fallback: string): string {
+  if (!err || typeof err !== 'object') return fallback;
+  const o = err as Record<string, unknown>;
+  if (typeof o.error === 'string' && o.error && !o.message) {
+    // bare error code
+    if (typeof o.detail === 'string' && o.detail) return o.detail;
+  }
+  if (typeof o.message === 'string' && o.message.trim()) return o.message;
+  if (typeof o.error === 'string' && o.error.trim() && typeof o.message !== 'string') {
+    // {error, message?} — prefer message if present
+    if (typeof (o as { message?: string }).message === 'string') {
+      return String((o as { message?: string }).message);
+    }
+  }
+  const detail = o.detail;
+  if (typeof detail === 'string' && detail.trim()) return detail;
+  if (detail && typeof detail === 'object') {
+    const d = detail as Record<string, unknown>;
+    if (typeof d.message === 'string' && d.message.trim()) return d.message;
+    if (typeof d.error === 'string' && d.error.trim()) {
+      const m = typeof d.message === 'string' ? d.message : '';
+      return m ? m : d.error;
+    }
+    // nested detail.detail (double-wrap)
+    if (typeof d.detail === 'string' && d.detail.trim()) return d.detail;
+    if (d.detail && typeof d.detail === 'object') {
+      const dd = d.detail as Record<string, unknown>;
+      if (typeof dd.message === 'string' && dd.message.trim()) return dd.message;
+      if (typeof dd.error === 'string' && dd.error.trim()) return dd.error;
+    }
+  }
+  if (typeof o.error === 'string' && o.error.trim()) return o.error;
+  return fallback;
+}
+
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   // withBasePath: prefixes /console on appliances (or /demo in marketing builds).
   const res = await fetch(withBasePath(url), init);
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
-    const message = (err as { error?: string }).error ?? res.statusText;
+    const message = messageFromErrorBody(err, res.statusText);
     throw new ApiError(message, res.status);
   }
   return res.json() as Promise<T>;

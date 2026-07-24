@@ -157,6 +157,7 @@ export interface RagHealthResponse {
     embedding_model_id?: string;
     indexed_embedding_model_id?: string | null;
     vector_size?: number | null;
+    config_embedding_dim?: number | null;
     require_real_embeddings?: boolean;
     uses_hash_fallback?: boolean;
     reindex_needed?: boolean;
@@ -176,6 +177,8 @@ export interface CorpusReindexResponse {
   embedding_model_id?: string;
   previous_embedding_model_id?: string;
   errors?: string[];
+  noop?: boolean;
+  collection_recreated?: boolean;
   [key: string]: unknown;
 }
 
