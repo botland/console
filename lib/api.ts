@@ -214,7 +214,7 @@ export const api = {
     }),
 
   putPlatformRag: (rag: import('@/lib/types').RagConfig) =>
-    fetchJson<import('@/lib/types').PlatformSnapshot>('/api/platform/rag', {
+    fetchJson<import('@/lib/types').PlatformRagPutResponse>('/api/platform/rag', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(rag),

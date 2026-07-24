@@ -454,6 +454,19 @@ export interface PlatformSnapshot {
   }>;
 }
 
+/** PUT /platform/rag may include retrieval push status beyond the snapshot. */
+export interface PlatformRagPutResponse extends PlatformSnapshot {
+  ok?: boolean;
+  warning?: string;
+  retrieval_sync?: {
+    ok?: boolean;
+    error?: string;
+    detail?: string;
+    status?: number;
+    config?: unknown;
+  };
+}
+
 export interface DeploymentConfig {
   id: string;
   display_name: string;

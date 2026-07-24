@@ -423,8 +423,8 @@ export async function putPlatformTenant(
 
 export async function putPlatformRag(
   rag: import('@/lib/types').RagConfig,
-): Promise<import('@/lib/types').PlatformSnapshot> {
-  return controllerJson<import('@/lib/types').PlatformSnapshot>('/platform/rag', {
+): Promise<import('@/lib/types').PlatformRagPutResponse> {
+  return controllerJson<import('@/lib/types').PlatformRagPutResponse>('/platform/rag', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(rag),

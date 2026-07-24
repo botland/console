@@ -68,6 +68,8 @@ export default function PacksPage() {
   const [tenantDraft, setTenantDraft] = useState('default');
   const [ragDraft, setRagDraft] = useState<RagConfig | null>(null);
   const [ragHealth, setRagHealth] = useState<import('@/lib/types').RagHealthResponse | null>(null);
+  const [ragSaveWarning, setRagSaveWarning] = useState<string | null>(null);
+  const [reindexStatus, setReindexStatus] = useState<string | null>(null);
   const [savingPlatform, setSavingPlatform] = useState(false);
   const [reindexing, setReindexing] = useState(false);
   const [developerMode, setDeveloperMode] = useState(false);
@@ -310,6 +312,7 @@ export default function PacksPage() {
     if (!ragDraft) return;
     setSavingPlatform(true);
     setError(null);
+    setRagSaveWarning(null);
     try {
       const snap = await api.putPlatformRag({
         ...ragDraft,
@@ -317,6 +320,12 @@ export default function PacksPage() {
       });
       setPlatform(snap);
       setRagDraft(snap.rag);
+      if (snap.warning || snap.retrieval_sync?.ok === false) {
+        setRagSaveWarning(
+          snap.warning ||
+            'Saved locally; retrieval was not updated. Check retrieval service and re-save.',
+        );
+      }
       try {
         setRagHealth(await api.getPlatformRagHealth());
       } catch {
@@ -330,13 +339,25 @@ export default function PacksPage() {
   };
 
   const runReindex = async () => {
+    const ok = window.confirm(
+      'This deletes the vector collection and re-embeds the entire RO corpus with the current embedding model. Continue?',
+    );
+    if (!ok) return;
     setReindexing(true);
     setError(null);
+    setReindexStatus(null);
     try {
-      await api.reindexCorpus({
+      const result = await api.reindexCorpus({
         tenant_id: tenantDraft.trim() || ragDraft?.tenant_id || 'default',
         corpus_id: ragDraft?.default_corpus_id || 'appliance',
       });
+      const docs = result.documents ?? 0;
+      const chunks = result.chunks ?? 0;
+      const errs = result.errors?.length ?? 0;
+      setReindexStatus(
+        `Reindex finished: ${docs} documents, ${chunks} chunks` +
+          (errs ? ` (${errs} file errors)` : ''),
+      );
       try {
         setRagHealth(await api.getPlatformRagHealth());
       } catch {
@@ -1131,6 +1152,16 @@ export default function PacksPage() {
                         {reindexing ? 'Reindexing…' : 'Reindex corpus'}
                       </Button>
                     </div>
+                    {ragSaveWarning ? (
+                      <p className="sm:col-span-3 text-xs text-amber-300/95" role="status">
+                        {ragSaveWarning}
+                      </p>
+                    ) : null}
+                    {reindexStatus ? (
+                      <p className="sm:col-span-3 text-xs text-emerald-300/90" role="status">
+                        {reindexStatus}
+                      </p>
+                    ) : null}
                   </div>
                 </div>
               )}
