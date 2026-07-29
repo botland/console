@@ -62,6 +62,10 @@ Export `conf.json` includes `head_node_id`, `head_ip`, and `head_epoch` for USB 
 | `GET/PUT /api/cluster` | Deprecated alias of orchestration |
 | `GET /api/v1/ws` | SSE: `cluster.state`, `node.metrics`, `head.changed`, `events` |
 | `GET /api/config/export` | `conf.json` download |
+| `POST /api/qualify/hf` | Qualify a Hugging Face model without downloading weights |
+| `POST /api/qualify/metadata` | Qualify from appliance-collected metadata files |
+| `GET /api/qualify/jobs/{id}` | Poll qualification job (stores completes locally) |
+| `GET /api/qualify` | List stored qualifications on this appliance |
 
 ## Multi-node mock (Phase 2)
 
@@ -78,6 +82,18 @@ APPLIANCE_DISABLE_AGENT_SIM=1                       # disable heartbeat loop
 ```
 
 `GET /api/status` includes `gateway: { local_node_id, is_head, head_api_url }`.
+
+## Model qualification (no download)
+
+The **Models** page can score a Hugging Face model on nine criteria (reasoning, speed, tools, multiuser, …) **without downloading weights**. The console BFF calls appliance-support `POST /v1/qualify/hf` (and optionally `/metadata` for appliance-held files), polls the job, and **stores completed results** under `APPLIANCE_CONSOLE_DATA_DIR/qualifications.json`.
+
+| Env | Purpose |
+|-----|---------|
+| `SUPPORT_SERVICE_URL` | Hosted appliance-support base URL. When unset, the console uses an offline mock scorer. |
+| `SUPPORT_ENABLED` | Set `false` to disable support + qualification. |
+| `MODELS_ADMIN_TOKEN` | Same admin secret as appliance-support (`X-Models-Admin-Token`). Required when calling a real support service. |
+
+Cache hits require matching `model_key` + `facts_version` + `schema_version`. HF branch/tag keys are only stored when the Hub revision resolved to a commit sha.
 
 ## Backend integration
 

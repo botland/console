@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Plus, Pencil, Power, PowerOff, Trash2 } from 'lucide-react';
 
 import { DeploymentForm } from '@/components/DeploymentForm';
+import { ModelQualificationPanel } from '@/components/ModelQualificationPanel';
 import { PageError, PageLoading } from '@/components/PageState';
 import { DeploymentBadge } from '@/components/StatusBadge';
 import { Button, Card, PageHeader } from '@/components/ui';
@@ -127,6 +128,12 @@ export default function DeploymentsPage() {
             onCancel={() => setEditing(null)}
           />
         </Card>
+      )}
+
+      {canManage && (
+        <div className="mb-6">
+          <ModelQualificationPanel />
+        </div>
       )}
 
       <div className="space-y-4">

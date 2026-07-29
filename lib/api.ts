@@ -392,4 +392,36 @@ export const api = {
 
   supportTickets: () =>
     fetchJson<import('@/lib/support/types').TicketListResponse>('/api/support/tickets'),
+
+  /** List qualifications stored on this appliance. */
+  listQualifications: () =>
+    fetchJson<import('@/lib/support/qualify-types').QualifyListResponse>('/api/qualify'),
+
+  /**
+   * Qualify a Hugging Face model without downloading weights.
+   * Returns 200 with `cached: true` on store hit, or 202 with `job_id` to poll.
+   */
+  qualifyHf: (body: {
+    model_ref: string;
+    revision?: string;
+    refresh?: boolean;
+  }) =>
+    fetchJson<import('@/lib/support/qualify-types').QualifyJobCreated>('/api/qualify/hf', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+
+  /** Qualify from appliance-collected metadata files (no Hub access required). */
+  qualifyMetadata: (bundle: import('@/lib/support/qualify-types').ModelMetadataBundle) =>
+    fetchJson<import('@/lib/support/qualify-types').QualifyJobCreated>('/api/qualify/metadata', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(bundle),
+    }),
+
+  qualifyJob: (jobId: string) =>
+    fetchJson<import('@/lib/support/qualify-types').QualifyJobResponse>(
+      `/api/qualify/jobs/${encodeURIComponent(jobId)}`,
+    ),
 };
