@@ -601,6 +601,9 @@ export function getStorage() {
 const _RO_INTENT =
   'Uses this data to answer questions. Does not change anything.';
 
+// Keep tool spellings and ids aligned with configs/mcp/capabilities.v1.yaml
+// (F12). A parent CI job runs console tests; catalog drift is a product defect
+// in demos that default to mock mode.
 const MOCK_CAPABILITIES: import('@/lib/types').CapabilityPack[] = [
   {
     id: 'corpus.read',
@@ -609,8 +612,8 @@ const MOCK_CAPABILITIES: import('@/lib/types').CapabilityPack[] = [
     pack: 'platform',
     pack_version: '1.0.0',
     mcp_server: '',
-    allowed_tools: ['knowledge_list', 'knowledge_search', 'knowledge_read'],
-    docs: 'Mock: corpus pack always on.',
+    allowed_tools: ['corpus_search'],
+    docs: 'Platform: corpus_search via controller / Retrieval Service.',
     health: { status: 'up', detail: 'mock' },
     configured: true,
     configured_detail: 'mock corpus',
@@ -658,13 +661,18 @@ const MOCK_CAPABILITIES: import('@/lib/types').CapabilityPack[] = [
   },
   {
     id: 'sql.query',
-    description: 'Runs read-only SQL (SELECT) against a mounted database',
+    description: 'Runs read-only SQL (SELECT) against PostgreSQL',
     enabled: false,
     pack: 'sql_ro',
     pack_version: '1.0.0',
     mcp_server: 'sql_ro',
-    allowed_tools: ['sql_list_tables', 'sql_query', 'sql_describe_table'],
-    docs: 'Set SQL_PATH to a sqlite file.',
+    allowed_tools: [
+      'sql_list_tables',
+      'sql_query',
+      'sql_describe_table',
+      'sql_connection_status',
+    ],
+    docs: 'Set SQL_DSN to a PostgreSQL URI (lab sandbox when unset).',
     health: { status: 'up', detail: 'mock' },
     configured: false,
     configured_detail: 'not configured',
@@ -681,11 +689,7 @@ const MOCK_CAPABILITIES: import('@/lib/types').CapabilityPack[] = [
     pack: 'platform',
     pack_version: '1.0.0',
     mcp_server: '',
-    allowed_tools: [
-      'knowledge_prepare_patch',
-      'knowledge_preview_patch',
-      'knowledge_list_pending',
-    ],
+    allowed_tools: ['corpus_propose_write'],
     docs: 'Staging corpus only. Prepare via AI; Apply under Pending changes.',
     health: { status: 'up', detail: 'mock' },
     configured: true,
@@ -703,7 +707,7 @@ const MOCK_CAPABILITIES: import('@/lib/types').CapabilityPack[] = [
     pack: 'platform',
     pack_version: '1.0.0',
     mcp_server: '',
-    allowed_tools: ['note_create_draft', 'note_list_drafts'],
+    allowed_tools: ['draft_create'],
     docs: 'Creates new files under staging/drafts/ only.',
     health: { status: 'up', detail: 'mock' },
     configured: true,
@@ -722,11 +726,7 @@ const MOCK_CAPABILITIES: import('@/lib/types').CapabilityPack[] = [
     pack: 'platform',
     pack_version: '1.0.0',
     mcp_server: '',
-    allowed_tools: [
-      'knowledge_prepare_archive',
-      'knowledge_preview_patch',
-      'knowledge_list_pending',
-    ],
+    allowed_tools: ['corpus_propose_archive'],
     docs: 'Soft-archive only. Apply under Pending changes. Rollback supported.',
     health: { status: 'up', detail: 'mock' },
     configured: true,
@@ -1088,8 +1088,8 @@ export function sqlQuery(
 ): import('@/lib/types').SqlQueryResponse {
   const sql = String(body.sql || '');
   return {
-    backend: 'sqlite',
-    backend_label: 'sqlite:mock',
+    backend: 'postgres',
+    backend_label: 'postgres:mock',
     columns: ['n', 'note'],
     rows: [[1, `mock result for: ${sql.slice(0, 40)}`]],
     row_count: 1,
@@ -1102,10 +1102,10 @@ export function sqlQuery(
 
 export function listEffectiveTools(): import('@/lib/types').EffectiveToolsResponse {
   return {
-    allowed_tools: ['knowledge_search', 'knowledge_list', 'knowledge_read', 'sql_query'],
-    denied_tools: [{ tool: 'knowledge_prepare_patch', reason: 'capability_disabled' }],
+    allowed_tools: ['corpus_search', 'sql_query'],
+    denied_tools: [{ tool: 'corpus_propose_write', reason: 'capability_disabled' }],
     subject: 'mock-operator',
-    count_allowed: 4,
+    count_allowed: 2,
     count_denied: 1,
     auth: {
       subject: 'mock-operator',
