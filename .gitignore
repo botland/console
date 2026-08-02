@@ -2,3 +2,4 @@ coverage/
 node_modules/
 .next/
 tsconfig.tsbuildinfo
+.data/

@@ -85,13 +85,14 @@ APPLIANCE_DISABLE_AGENT_SIM=1                       # disable heartbeat loop
 
 ## Model qualification (no download)
 
-The **Models** page can score a Hugging Face model on nine criteria (reasoning, speed, tools, multiuser, …) **without downloading weights**. The console BFF calls appliance-support `POST /v1/qualify/hf` (and optionally `/metadata` for appliance-held files), polls the job, and **stores completed results** under `APPLIANCE_CONSOLE_DATA_DIR/qualifications.json`.
+The **Models** page exposes a **Qualify** action (sparkles) next to each Hugging Face model’s disable/edit/delete controls. First click starts scoring on nine criteria (reasoning, speed, tools, multiuser, …) **without downloading weights**; later clicks open a dialog with the stored result (Re-qualify is available from the dialog). While any qualification is in progress, all Qualify buttons are disabled. The console BFF calls appliance-support `POST /v1/qualify/hf` (and optionally `/metadata` for appliance-held files), polls the job, and **stores completed results** under `APPLIANCE_CONSOLE_DATA_DIR/qualifications.json`.
 
 | Env | Purpose |
 |-----|---------|
 | `SUPPORT_SERVICE_URL` | Hosted appliance-support base URL. When unset, the console uses an offline mock scorer. |
 | `SUPPORT_ENABLED` | Set `false` to disable support + qualification. |
 | `MODELS_ADMIN_TOKEN` | Same admin secret as appliance-support (`X-Models-Admin-Token`). Required when calling a real support service. |
+| `APPLIANCE_CONSOLE_DATA_DIR` | Directory for `qualifications.json` (and mock state). Defaults to `./.data` in local dev; the production image sets `/data` (writable by the non-root `nextjs` user — do not rely on `/app/.data`). |
 
 Cache hits require matching `model_key` + `facts_version` + `schema_version`. HF branch/tag keys are only stored when the Hub revision resolved to a commit sha.
 

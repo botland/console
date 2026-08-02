@@ -29,6 +29,11 @@ ENV NEXT_PUBLIC_BASE_PATH=${CONSOLE_BASE_PATH}
 
 RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
 
+# Writable data dir for qualifications.json / mock state. The process runs as
+# nextjs and cannot mkdir under root-owned /app (default cwd/.data → EACCES).
+RUN mkdir -p /data && chown nextjs:nodejs /data
+ENV APPLIANCE_CONSOLE_DATA_DIR=/data
+
 COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
