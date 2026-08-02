@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 
 import { PageState } from '@/components/PageState';
+import { SourcesDraftLayout } from '@/components/SourcesDraftLayout';
 import { Button, Card, Input, Label, PageHeader } from '@/components/ui';
 import { api, ApiError } from '@/lib/api';
 import {
@@ -21,6 +22,7 @@ import {
   DEFAULT_GROUP_OPTIONS,
   SOURCE_TYPES,
   SECTION_META,
+  buildSourceTypeRows,
   configSummary,
   createInstance,
   enableConfirmMessage,
@@ -73,6 +75,8 @@ export default function PacksPage() {
   const [savingPlatform, setSavingPlatform] = useState(false);
   const [reindexing, setReindexing] = useState(false);
   const [developerMode, setDeveloperMode] = useState(false);
+  /** Temporary type-centric layout (modal per service). Default on for review. */
+  const [draftLayout, setDraftLayout] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [configOpenId, setConfigOpenId] = useState<string | null>(null);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
@@ -376,13 +380,13 @@ export default function PacksPage() {
     }
   };
 
-  const addInstance = async (type: SourceTypeDef) => {
+  const addInstance = async (type: SourceTypeDef): Promise<SourceInstance | null> => {
     if (!type.multiInstance) {
       const existing = instances.find((i) => i.typeId === type.id);
       if (existing) {
         setExpandedId(existing.id);
         setAddMenuOpen(false);
-        return;
+        return existing;
       }
     }
 
@@ -409,10 +413,11 @@ export default function PacksPage() {
         setDraftConfigs((d) => ({ ...d, [normalized.id]: { ...normalized.config } }));
         setDraftNames((d) => ({ ...d, [normalized.id]: normalized.displayName }));
         setAddMenuOpen(false);
+        return normalized;
       } catch (e) {
         setError(e instanceof ApiError ? e.message : 'Failed to create source on appliance');
+        return null;
       }
-      return;
     }
     const next = [...instances, inst];
     persist(next);
@@ -421,6 +426,7 @@ export default function PacksPage() {
     setDraftConfigs((d) => ({ ...d, [inst.id]: { ...inst.config } }));
     setDraftNames((d) => ({ ...d, [inst.id]: inst.displayName }));
     setAddMenuOpen(false);
+    return inst;
   };
 
   const removeInstance = async (instance: SourceInstance) => {
@@ -537,6 +543,14 @@ export default function PacksPage() {
       }))
       .filter((g) => g.items.length > 0);
   }, [instances, developerMode]);
+
+  const typeSections = useMemo(
+    () =>
+      buildSourceTypeRows(instances, data?.capabilities ?? [], {
+        developerMode,
+      }),
+    [instances, data?.capabilities, developerMode],
+  );
 
   const orphanCaps = useMemo(
     () => (data ? unmappedCapabilities(data.capabilities) : []),
@@ -835,20 +849,54 @@ export default function PacksPage() {
         <>
           <PageHeader
             title="Information sources"
-            description="Connect systems the AI may use. Each connection is its own instance—with its own credentials, agent permissions, and groups. Add multiple databases or GitHub tokens when you need separate roles or scopes."
+            description={
+              draftLayout
+                ? 'Connect systems the AI may use. Open Configure on a service to manage all of its instances—credentials, groups, and agent permissions.'
+                : 'Connect systems the AI may use. Each connection is its own instance—with its own credentials, agent permissions, and groups. Add multiple databases or GitHub tokens when you need separate roles or scopes.'
+            }
           />
 
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-start gap-2 rounded-xl border border-slate-800 bg-slate-900/40 p-4 text-sm text-slate-400 sm:flex-1">
-              <Shield className="mt-0.5 h-4 w-4 shrink-0 text-cyan-500/80" />
-              <p>
-                <strong className="text-slate-300">Instances, not global packs.</strong> One
-                PostgreSQL type can have many instances (prod RO, analytics RO). Upstream tokens
-                and DB roles set the ceiling; OwnEdge permissions are policy for the agent on that
-                instance. Configuration is done here—not in a shared .env.
-              </p>
+            <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:items-stretch">
+              <div className="flex items-start gap-2 rounded-xl border border-cyan-800/40 bg-cyan-950/20 p-3 text-sm text-slate-300 sm:flex-1">
+                <Shield className="mt-0.5 h-4 w-4 shrink-0 text-cyan-500/80" />
+                <div className="min-w-0 space-y-1">
+                  <p className="text-xs">
+                    <strong className="text-cyan-200/90">
+                      {draftLayout ? 'Draft layout' : 'Classic layout'}
+                    </strong>
+                    <span className="mx-1.5 text-slate-600">·</span>
+                    Backend:{' '}
+                    <span className="text-slate-200">
+                      {useServerRegistry ? 'Appliance registry' : 'Console draft (local)'}
+                    </span>
+                    {useServerRegistry ? (
+                      <span className="text-slate-500"> — CRUD via /sources</span>
+                    ) : (
+                      <span className="text-slate-500"> — localStorage + capability packs</span>
+                    )}
+                  </p>
+                  {draftLayout ? (
+                    <p className="text-xs text-slate-500">
+                      One card per service. Configure opens a popup with every instance of that
+                      service.
+                    </p>
+                  ) : (
+                    <p className="text-xs text-slate-500">
+                      One card per instance under On this appliance / Your systems.
+                    </p>
+                  )}
+                </div>
+              </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="secondary"
+                onClick={() => setDraftLayout((v) => !v)}
+                title="Toggle temporary draft layout"
+              >
+                {draftLayout ? 'Use classic layout' : 'Use draft layout'}
+              </Button>
               <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-2 text-xs text-slate-400">
                 <input
                   type="checkbox"
@@ -858,43 +906,45 @@ export default function PacksPage() {
                 />
                 Developer mode
               </label>
-              <div className="relative">
-                <Button variant="primary" onClick={() => setAddMenuOpen((v) => !v)}>
-                  <Plus className="h-4 w-4" />
-                  Add source
-                </Button>
-                {addMenuOpen && (
-                  <div className="absolute right-0 z-20 mt-2 w-72 rounded-xl border border-slate-700 bg-slate-900 p-2 shadow-xl">
-                    <p className="px-2 py-1 text-xs text-slate-500">
-                      Choose a type. You can add another instance of the same type later.
-                    </p>
-                    {addableTypes.length === 0 ? (
-                      <p className="px-2 py-2 text-xs text-slate-400">
-                        No more types available. Enable Developer mode for advanced adapters.
+              {!draftLayout && (
+                <div className="relative">
+                  <Button variant="primary" onClick={() => setAddMenuOpen((v) => !v)}>
+                    <Plus className="h-4 w-4" />
+                    Add source
+                  </Button>
+                  {addMenuOpen && (
+                    <div className="absolute right-0 z-20 mt-2 w-72 rounded-xl border border-slate-700 bg-slate-900 p-2 shadow-xl">
+                      <p className="px-2 py-1 text-xs text-slate-500">
+                        Choose a type. You can add another instance of the same type later.
                       </p>
-                    ) : (
-                      addableTypes.map((t) => (
-                        <button
-                          key={t.id}
-                          type="button"
-                          className="block w-full rounded-lg px-3 py-2 text-left text-sm text-slate-200 hover:bg-slate-800"
-                          onClick={() => addInstance(t)}
-                        >
-                          <div className="font-medium">{t.displayName}</div>
-                          <div className="text-xs text-slate-500 line-clamp-2">{t.summary}</div>
-                        </button>
-                      ))
-                    )}
-                    <button
-                      type="button"
-                      className="mt-1 w-full rounded-lg px-3 py-2 text-left text-xs text-slate-500 hover:bg-slate-800"
-                      onClick={() => setAddMenuOpen(false)}
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                )}
-              </div>
+                      {addableTypes.length === 0 ? (
+                        <p className="px-2 py-2 text-xs text-slate-400">
+                          No more types available. Enable Developer mode for advanced adapters.
+                        </p>
+                      ) : (
+                        addableTypes.map((t) => (
+                          <button
+                            key={t.id}
+                            type="button"
+                            className="block w-full rounded-lg px-3 py-2 text-left text-sm text-slate-200 hover:bg-slate-800"
+                            onClick={() => addInstance(t)}
+                          >
+                            <div className="font-medium">{t.displayName}</div>
+                            <div className="text-xs text-slate-500 line-clamp-2">{t.summary}</div>
+                          </button>
+                        ))
+                      )}
+                      <button
+                        type="button"
+                        className="mt-1 w-full rounded-lg px-3 py-2 text-left text-xs text-slate-500 hover:bg-slate-800"
+                        onClick={() => setAddMenuOpen(false)}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -952,51 +1002,72 @@ export default function PacksPage() {
             </Card>
           )}
 
-          <div className="space-y-8">
-            {instancesBySection.map(({ section, items }) => (
-              <section key={section} className="space-y-4">
+          {draftLayout ? (
+            <SourcesDraftLayout
+              typeSections={typeSections}
+              data={data}
+              useServerRegistry={useServerRegistry}
+              developerMode={developerMode}
+              busyKey={busyKey}
+              draftConfigs={draftConfigs}
+              setDraftConfigs={setDraftConfigs}
+              draftNames={draftNames}
+              setDraftNames={setDraftNames}
+              onAddInstance={addInstance}
+              onRemoveInstance={removeInstance}
+              onSaveInstanceConfig={saveInstanceConfig}
+              onToggleGroup={toggleGroup}
+              onTogglePermission={togglePermission}
+            />
+          ) : (
+            <div className="space-y-8">
+              {instancesBySection.map(({ section, items }) => (
+                <section key={section} className="space-y-4">
+                  <div>
+                    <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-300">
+                      {SECTION_META[section].title}
+                    </h2>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {SECTION_META[section].description}
+                    </p>
+                  </div>
+                  <div className="space-y-4">{items.map(renderInstance)}</div>
+                </section>
+              ))}
+
+              {instances.length === 0 && (
+                <Card className="space-y-2 text-center">
+                  <p className="text-sm text-slate-300">No sources connected yet</p>
+                  <p className="text-xs text-slate-500">
+                    Use Add source to connect PostgreSQL, GitHub, or other systems.
+                  </p>
+                </Card>
+              )}
+
+              <section className="space-y-4">
                 <div>
                   <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-300">
-                    {SECTION_META[section].title}
+                    Coming soon
                   </h2>
-                  <p className="mt-1 text-xs text-slate-500">{SECTION_META[section].description}</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Document suites and more databases—each supporting multiple instances (sites,
+                    spaces, tenants).
+                  </p>
                 </div>
-                <div className="space-y-4">{items.map(renderInstance)}</div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {COMING_SOON_CONNECTORS.map((c) => (
+                    <Card key={c.id} className="space-y-1 opacity-80">
+                      <div className="text-sm font-medium text-slate-300">{c.displayName}</div>
+                      <p className="text-xs text-slate-500">{c.summary}</p>
+                      <span className="inline-block pt-1 text-xs text-slate-600">
+                        Not available yet
+                      </span>
+                    </Card>
+                  ))}
+                </div>
               </section>
-            ))}
-
-            {instances.length === 0 && (
-              <Card className="space-y-2 text-center">
-                <p className="text-sm text-slate-300">No sources connected yet</p>
-                <p className="text-xs text-slate-500">
-                  Use Add source to connect PostgreSQL, GitHub, or other systems.
-                </p>
-              </Card>
-            )}
-
-            <section className="space-y-4">
-              <div>
-                <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-300">
-                  Coming soon
-                </h2>
-                <p className="mt-1 text-xs text-slate-500">
-                  Document suites and more databases—each supporting multiple instances (sites,
-                  spaces, tenants).
-                </p>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {COMING_SOON_CONNECTORS.map((c) => (
-                  <Card key={c.id} className="space-y-1 opacity-80">
-                    <div className="text-sm font-medium text-slate-300">{c.displayName}</div>
-                    <p className="text-xs text-slate-500">{c.summary}</p>
-                    <span className="inline-block pt-1 text-xs text-slate-600">
-                      Not available yet
-                    </span>
-                  </Card>
-                ))}
-              </div>
-            </section>
-          </div>
+            </div>
+          )}
 
           {developerMode && platform && (
             <Card className="mt-8 space-y-4 border-slate-700/80">

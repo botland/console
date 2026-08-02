@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   SOURCE_TYPES,
+  aggregateInstanceStatus,
+  buildSourceTypeRows,
   createInstance,
   enableConfirmMessage,
   instanceConfigComplete,
@@ -9,6 +11,7 @@ import {
   normalizeSourceInstance,
   seedInstancesFromPacks,
   trustLabel,
+  typeRowSummary,
   unmappedCapabilities,
 } from '@/lib/connectors';
 import type { CapabilityPack } from '@/lib/types';
@@ -158,5 +161,37 @@ describe('source types and instances', () => {
   it('lists unmapped capabilities', () => {
     const packs = [pack({ id: 'future.connector' }), pack({ id: 'git.search' })];
     expect(unmappedCapabilities(packs).map((p) => p.id)).toEqual(['future.connector']);
+  });
+
+  it('aggregates instance status by severity (error wins)', () => {
+    expect(aggregateInstanceStatus([])).toBe('needs_setup');
+    expect(aggregateInstanceStatus(['connected', 'ready'])).toBe('ready');
+    expect(aggregateInstanceStatus(['connected', 'error', 'needs_setup'])).toBe('error');
+  });
+
+  it('builds type-centric rows including empty multi-instance types', () => {
+    const packs = [pack({ id: 'sql.query', enabled: false, configured: false })];
+    const pg = SOURCE_TYPES.find((c) => c.id === 'postgresql')!;
+    const inst = createInstance(pg, {
+      displayName: 'Finance',
+      packBound: false,
+      config: {
+        host: 'db',
+        database: 'fin',
+        username: 'ro',
+        password: 'x',
+      },
+    });
+    const sections = buildSourceTypeRows([inst], packs, { developerMode: false });
+    const apps = sections.find((s) => s.section === 'apps');
+    expect(apps).toBeTruthy();
+    const pgRow = apps!.rows.find((r) => r.type.id === 'postgresql');
+    const ghRow = apps!.rows.find((r) => r.type.id === 'github');
+    expect(pgRow?.instances).toHaveLength(1);
+    expect(ghRow?.instances).toHaveLength(0);
+    expect(typeRowSummary(ghRow!)).toBe('Not connected');
+    expect(typeRowSummary(pgRow!)).toMatch(/Ready|Connected|Needs|Draft/i);
+    // Advanced types hidden without developer mode
+    expect(sections.find((s) => s.section === 'advanced')).toBeUndefined();
   });
 });

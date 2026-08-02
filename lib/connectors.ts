@@ -846,6 +846,105 @@ export const SECTION_META: Record<
   },
 };
 
+/**
+ * Draft IA labels (type-centric layout). Prefer these over SECTION_META for the
+ * temporary Sources draft — geography ("on this appliance") is confusing.
+ */
+export const DRAFT_SECTION_META: Record<
+  SourceSection,
+  { title: string; description: string }
+> = {
+  builtin: {
+    title: 'Built-in',
+    description: 'On-box documentation and drafts that ship with the appliance.',
+  },
+  apps: {
+    title: 'Connected systems',
+    description:
+      'Databases and apps the AI may use. Open Configure to manage every instance of that service.',
+  },
+  advanced: {
+    title: 'Advanced',
+    description: 'Low-level adapters for operators. Prefer application sources when available.',
+  },
+};
+
+/** One catalog type plus its configured instances (draft layout unit). */
+export interface SourceTypeRow {
+  type: SourceTypeDef;
+  instances: SourceInstance[];
+  aggregateStatus: InstanceStatus;
+}
+
+const STATUS_SEVERITY: Record<InstanceStatus, number> = {
+  error: 0,
+  needs_setup: 1,
+  draft: 2,
+  ready: 3,
+  connected: 4,
+};
+
+/** Worst / most actionable status among instances (empty → needs_setup). */
+export function aggregateInstanceStatus(statuses: InstanceStatus[]): InstanceStatus {
+  if (statuses.length === 0) return 'needs_setup';
+  return statuses.reduce((worst, s) =>
+    STATUS_SEVERITY[s] < STATUS_SEVERITY[worst] ? s : worst,
+  );
+}
+
+/**
+ * Group instances under catalog source types for the draft layout.
+ * Multi-instance types appear even with zero instances so Configure is always available.
+ */
+export function buildSourceTypeRows(
+  instances: SourceInstance[],
+  packs: CapabilityPack[],
+  options?: { developerMode?: boolean },
+): { section: SourceSection; rows: SourceTypeRow[] }[] {
+  const developerMode = Boolean(options?.developerMode);
+  const byType = new Map<string, SourceInstance[]>();
+  for (const inst of instances) {
+    const list = byType.get(inst.typeId) ?? [];
+    list.push(inst);
+    byType.set(inst.typeId, list);
+  }
+
+  const order: SourceSection[] = ['builtin', 'apps', 'advanced'];
+  return order
+    .map((section) => {
+      const types = SOURCE_TYPES.filter((t) => {
+        if (t.section !== section) return false;
+        if (t.advancedOnly && !developerMode) return false;
+        return true;
+      });
+      const rows: SourceTypeRow[] = types
+        .map((type) => {
+          const typeInstances = byType.get(type.id) ?? [];
+          // Always show multi-instance + builtins; skip empty singleton non-builtins (none today)
+          if (typeInstances.length === 0 && !type.multiInstance && !type.singletonBuiltin) {
+            return null;
+          }
+          const statuses = typeInstances.map((i) => instanceStatus(i, packs, type));
+          return {
+            type,
+            instances: typeInstances,
+            aggregateStatus: aggregateInstanceStatus(statuses),
+          };
+        })
+        .filter(Boolean) as SourceTypeRow[];
+      return { section, rows };
+    })
+    .filter((g) => g.rows.length > 0);
+}
+
+/** Human status line for a type card. */
+export function typeRowSummary(row: SourceTypeRow): string {
+  const n = row.instances.length;
+  if (n === 0) return 'Not connected';
+  if (n === 1) return statusLabel(row.aggregateStatus);
+  return `${n} instances · ${statusLabel(row.aggregateStatus)}`;
+}
+
 /** Alias for older imports */
 export type ConnectorDef = SourceTypeDef;
 export type ConnectorSection = SourceSection;

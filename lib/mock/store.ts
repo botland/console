@@ -870,6 +870,19 @@ let mockSources: import('@/lib/types').SourceInstanceDto[] = [
     resourceUri: 'knowledge://builtin-appliance-knowledge/collections/default',
     scheme: 'knowledge',
   },
+  {
+    id: 'builtin-draft-notes',
+    typeId: 'draft-notes',
+    displayName: 'Draft notes',
+    config: {},
+    enabledPermissionIds: [],
+    groups: ['Everyone'],
+    packBound: true,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    resourceUri: 'draft://builtin-draft-notes',
+    scheme: 'draft',
+  },
 ];
 
 export function listSources(): import('@/lib/types').SourcesResponse {
