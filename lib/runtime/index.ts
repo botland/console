@@ -137,6 +137,10 @@ export async function getStorage() {
   return isInferedgeRuntime() ? inferedge.getStorage() : mock.getStorage();
 }
 
+export async function putHfToken(token: string): Promise<{ hf_token_set: boolean }> {
+  return isInferedgeRuntime() ? inferedge.putHfToken(token) : mock.putHfToken(token);
+}
+
 export async function listCapabilities() {
   return isInferedgeRuntime() ? inferedge.listCapabilities() : mock.listCapabilities();
 }
@@ -174,6 +178,14 @@ export async function setCapabilityEnabled(
 
 export async function getPlatform() {
   return isInferedgeRuntime() ? inferedge.getPlatform() : mock.getPlatform();
+}
+
+export async function getIdentity() {
+  return isInferedgeRuntime() ? inferedge.getIdentity() : mock.getIdentity();
+}
+
+export async function putIdentity(body: Partial<import('@/lib/types').IdentitySettings>) {
+  return isInferedgeRuntime() ? inferedge.putIdentity(body) : mock.putIdentity(body);
 }
 
 export async function listSources() {

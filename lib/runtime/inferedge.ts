@@ -324,6 +324,20 @@ export async function getPlatform(): Promise<import('@/lib/types').PlatformSnaps
   return controllerJson<import('@/lib/types').PlatformSnapshot>('/platform');
 }
 
+export async function getIdentity(): Promise<import('@/lib/types').IdentitySettings> {
+  return controllerJson<import('@/lib/types').IdentitySettings>('/platform/identity');
+}
+
+export async function putIdentity(
+  body: Partial<import('@/lib/types').IdentitySettings>,
+): Promise<import('@/lib/types').IdentitySettings> {
+  return controllerJson<import('@/lib/types').IdentitySettings>('/platform/identity', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
 export async function listSources(): Promise<import('@/lib/types').SourcesResponse> {
   return controllerJson<import('@/lib/types').SourcesResponse>('/sources');
 }
@@ -608,4 +622,12 @@ export async function removeMount(id: string): Promise<boolean> {
 
 export async function getStorage(): Promise<import('@/lib/types').MockState['storage_usage']> {
   return controllerJson('/storage');
+}
+
+export async function putHfToken(token: string): Promise<{ hf_token_set: boolean }> {
+  return controllerJson('/storage/hf-token', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token }),
+  });
 }

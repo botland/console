@@ -28,6 +28,8 @@ describe('console-capabilities', () => {
     expect(items).toContain('config');
     expect(items).toContain('deployments');
     expect(items).toContain('access');
+    expect(items).toContain('identity');
+    expect(items).toContain('application');
     expect(items).toContain('packs');
   });
 
@@ -39,6 +41,8 @@ describe('console-capabilities', () => {
       ),
     );
     expect(items).not.toContain('access');
+    expect(items).not.toContain('identity');
+    expect(items).not.toContain('application');
     expect(items).not.toContain('packs');
   });
 

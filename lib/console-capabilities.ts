@@ -9,6 +9,8 @@ export type ConsoleNavId =
   | 'storage'
   | 'packs'
   | 'access'
+  | 'identity'
+  | 'application'
   | 'workflows'
   | 'system'
   | 'support'
@@ -44,9 +46,17 @@ export function visibleNavItems(ctx: ConsoleContext): ConsoleNavId[] {
 
   if (isStandalone(ctx.cluster) || isDistributedCoordinator(ctx)) {
     items.splice(1, 0, 'deployments');
-    // Sources, Access audit, Workflows only on head / standalone
+    // Sources, Access, Identity, Application, Workflows only on head / standalone
     const storageIdx = items.indexOf('storage');
-    items.splice(storageIdx + 1, 0, 'packs', 'access', 'workflows');
+    items.splice(
+      storageIdx + 1,
+      0,
+      'packs',
+      'access',
+      'identity',
+      'application',
+      'workflows',
+    );
     items.push('config');
   } else if (backend === 'federation') {
     items.splice(1, 0, 'deployments');
@@ -104,6 +114,8 @@ export const NAV_ROUTES: Record<ConsoleNavId, string> = {
   storage: '/storage',
   packs: '/packs',
   access: '/access',
+  identity: '/identity',
+  application: '/application',
   workflows: '/workflows',
   system: '/system',
   support: '/support',

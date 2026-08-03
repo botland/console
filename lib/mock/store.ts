@@ -595,7 +595,26 @@ export function getGatewayStatus(): GatewayInfo {
 }
 
 export function getStorage() {
-  return getState().storage_usage;
+  const state = getState();
+  const envSet = Boolean(process.env.HF_TOKEN?.trim());
+  const stored = Boolean(state.hf_token?.trim());
+  return {
+    ...state.storage_usage,
+    hf_token_set: envSet || stored,
+  };
+}
+
+export function putHfToken(token: string): { hf_token_set: boolean } {
+  const state = getState();
+  const cleaned = token.trim();
+  if (cleaned) {
+    state.hf_token = cleaned;
+  } else {
+    delete state.hf_token;
+  }
+  saveState(state);
+  addEvent(cleaned ? 'Hugging Face token updated' : 'Hugging Face token cleared', 'info');
+  return getStorage();
 }
 
 const _RO_INTENT =
@@ -1135,6 +1154,58 @@ export function listEffectiveTools(): import('@/lib/types').EffectiveToolsRespon
 export function getPlatform(): import('@/lib/types').PlatformSnapshot {
   mockPlatform = { ...mockPlatform, sources: structuredClone(mockSources) };
   return structuredClone(mockPlatform);
+}
+
+const MOCK_IDENTITY_DEFAULTS: import('@/lib/types').IdentitySettings = {
+  auth_mode: 'open',
+  pep_mode: 'soft',
+  sso_elevates_pep: true,
+  sso_enabled: false,
+  oidc_verify: false,
+  oidc_issuer: '',
+  oidc_audience: '',
+  oidc_jwks_url: '',
+  oidc_claim_groups: 'groups|roles|realm_access.roles',
+  oidc_claim_sub: 'sub',
+  oidc_claim_email: 'email|preferred_username|upn',
+  oidc_claim_roles: 'roles|realm_access.roles|app_roles',
+  oidc_claim_tenant: 'tid|tenant_id|org_id|extension_TenantId',
+  oidc_tls_trust: 'system_cas',
+  oidc_tls_ca_pem: '',
+  retrieval_acl_strict: true,
+  corpus_group_map: '',
+  saved: false,
+  edge_trust_configured: false,
+  mesh_secret_configured: true,
+};
+
+let mockIdentity: import('@/lib/types').IdentitySettings = {
+  ...MOCK_IDENTITY_DEFAULTS,
+};
+
+export function getIdentity(): import('@/lib/types').IdentitySettings {
+  return structuredClone(mockIdentity);
+}
+
+export function putIdentity(
+  body: Partial<import('@/lib/types').IdentitySettings>,
+): import('@/lib/types').IdentitySettings {
+  mockIdentity = {
+    ...MOCK_IDENTITY_DEFAULTS,
+    ...mockIdentity,
+    ...body,
+    saved: true,
+    edge_trust_configured: mockIdentity.edge_trust_configured,
+    mesh_secret_configured: mockIdentity.mesh_secret_configured,
+  };
+  if (mockPlatform.acl) {
+    mockPlatform = {
+      ...mockPlatform,
+      acl: { ...mockPlatform.acl, sso_enabled: Boolean(mockIdentity.sso_enabled) },
+    };
+  }
+  addEvent('Identity posture saved', 'info');
+  return structuredClone(mockIdentity);
 }
 
 export function putPlatformTenant(tenant_id: string): import('@/lib/types').PlatformSnapshot {

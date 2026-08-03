@@ -4,9 +4,11 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import {
+  AppWindow,
   Box,
   GitBranch,
   HardDrive,
+  KeyRound,
   LayoutDashboard,
   Network,
   Package,
@@ -39,24 +41,34 @@ const NAV_META: Record<
   storage: { label: 'Storage', icon: HardDrive },
   packs: { label: 'Sources', icon: Package },
   access: { label: 'Access', icon: Shield },
+  identity: { label: 'Identity', icon: KeyRound },
+  application: { label: 'Application', icon: AppWindow },
   workflows: { label: 'Workflows', icon: GitBranch },
   system: { label: 'System', icon: Settings },
   support: { label: 'Support', icon: LifeBuoy },
   config: { label: 'Config', icon: Sliders },
 };
 
+/** Default nav for head / standalone before status arrives (workers refine after load). */
+const DEFAULT_NAV: ConsoleNavId[] = [
+  'overview',
+  'deployments',
+  'orchestration',
+  'nodes',
+  'storage',
+  'packs',
+  'access',
+  'identity',
+  'application',
+  'workflows',
+  'system',
+  'support',
+  'config',
+];
+
 export function Shell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const [navIds, setNavIds] = useState<ConsoleNavId[]>([
-    'overview',
-    'deployments',
-    'orchestration',
-    'nodes',
-    'storage',
-    'system',
-    'support',
-    'config',
-  ]);
+  const [navIds, setNavIds] = useState<ConsoleNavId[]>(DEFAULT_NAV);
   const [footer, setFooter] = useState<string | null>(null);
   const { status } = useApplianceStatus();
 
@@ -69,7 +81,12 @@ export function Shell({ children }: { children: React.ReactNode }) {
       setFooter(status.config.appliance_id);
     }
     if (status.gateway && status.config?.cluster) {
-      setNavIds(visibleNavItems(buildConsoleContext(status.gateway, status.config.cluster)));
+      try {
+        setNavIds(visibleNavItems(buildConsoleContext(status.gateway, status.config.cluster)));
+      } catch (e) {
+        console.error('Failed to resolve console nav', e);
+        // Keep DEFAULT_NAV rather than blanking head-only tabs on a bad status payload.
+      }
     }
   }, [status]);
 
@@ -81,8 +98,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
         </div>
         <nav className="flex-1 p-4 space-y-1">
           {navIds.map((id) => {
-            const { href } = { href: NAV_ROUTES[id] };
-            const { label, icon: Icon } = NAV_META[id];
+            const href = NAV_ROUTES[id];
+            const meta = NAV_META[id];
+            if (!href || !meta) return null;
+            const { label, icon: Icon } = meta;
             const active = href === '/' ? pathname === '/' : pathname.startsWith(href);
             return (
               <Link

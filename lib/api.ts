@@ -199,7 +199,16 @@ export const api = {
       used_bytes: number;
       paths: Record<string, { name: string; size_bytes: number; type: string }[]>;
       mounts: StorageMount[];
+      hf_token_set?: boolean;
     }>('/api/storage'),
+
+  /** Set or clear Hugging Face token (empty string clears console override). */
+  putHfToken: (token: string) =>
+    fetchJson<{ hf_token_set: boolean }>('/api/storage/hf-token', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    }),
 
   listCapabilities: () =>
     fetchJson<import('@/lib/types').CapabilitiesResponse>('/api/capabilities'),
@@ -241,6 +250,16 @@ export const api = {
     }),
 
   getPlatform: () => fetchJson<import('@/lib/types').PlatformSnapshot>('/api/platform'),
+
+  getIdentity: () =>
+    fetchJson<import('@/lib/types').IdentitySettings>('/api/platform/identity'),
+
+  putIdentity: (body: Partial<import('@/lib/types').IdentitySettings>) =>
+    fetchJson<import('@/lib/types').IdentitySettings>('/api/platform/identity', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
 
   putPlatformTenant: (tenant_id: string) =>
     fetchJson<import('@/lib/types').PlatformSnapshot>('/api/platform/tenant', {

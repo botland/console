@@ -111,7 +111,7 @@ export const applianceConfigSchemaV2 = z.object({
     mounts: z.array(
       z.object({
         id: z.string(),
-        type: z.enum(['nfs', 'smb', 's3']),
+        type: z.enum(['nfs', 'smb', 's3', 'minio']),
         remote: z.string(),
         local_path: z.string(),
       }),

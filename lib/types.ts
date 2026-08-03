@@ -415,6 +415,31 @@ export interface EffectiveToolsResponse {
   note?: string;
 }
 
+/** Customer identity posture — console is source of truth (GET/PUT /platform/identity). */
+export interface IdentitySettings {
+  auth_mode: 'open' | 'headers' | 'token' | 'oidc';
+  pep_mode: 'off' | 'soft' | 'strict';
+  sso_elevates_pep: boolean;
+  sso_enabled: boolean;
+  oidc_verify: boolean;
+  oidc_issuer: string;
+  oidc_audience: string;
+  oidc_jwks_url: string;
+  oidc_claim_groups: string;
+  oidc_claim_sub: string;
+  oidc_claim_email: string;
+  oidc_claim_roles: string;
+  oidc_claim_tenant: string;
+  oidc_tls_trust: 'system_cas' | 'custom_ca' | 'insecure_lab';
+  oidc_tls_ca_pem: string;
+  retrieval_acl_strict: boolean;
+  corpus_group_map: string;
+  /** True after at least one successful console save. */
+  saved?: boolean;
+  edge_trust_configured?: boolean;
+  mesh_secret_configured?: boolean;
+}
+
 export interface PlatformSnapshot {
   tenant_id: string;
   rag: RagConfig;
@@ -510,7 +535,8 @@ export interface SystemConfig {
 
 export interface StorageMount {
   id: string;
-  type: 'nfs' | 'smb' | 's3';
+  /** nfs/smb filesystem mounts; s3 = AWS S3 API; minio = S3-compatible MinIO endpoint */
+  type: 'nfs' | 'smb' | 's3' | 'minio';
   remote: string;
   local_path: string;
 }
@@ -612,7 +638,11 @@ export interface MockState {
     total_bytes: number;
     used_bytes: number;
     paths: Record<string, { name: string; size_bytes: number; type: 'dir' | 'file' }[]>;
+    /** Effective HF token present (env and/or console-set). Never returns the secret. */
+    hf_token_set?: boolean;
   };
+  /** Mock-only persistence for console-set HF token (never returned to clients as value). */
+  hf_token?: string;
 }
 
 export interface PlannerRecommendation {
