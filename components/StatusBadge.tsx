@@ -1,4 +1,5 @@
 import { cn } from '@/lib/cn';
+import type { InstanceStatus } from '@/lib/connectors';
 import type { AgentPhase, ApplianceState, DeploymentStatus, NodeStatus } from '@/lib/types';
 
 const applianceColors: Record<ApplianceState, string> = {
@@ -20,6 +21,23 @@ const nodeColors: Record<NodeStatus, string> = {
   online: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
   offline: 'bg-slate-500/15 text-slate-400 border-slate-600/30',
   degraded: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
+};
+
+/** Source instance status — same badge treatment as nodes / deployments. */
+const sourceInstanceColors: Record<InstanceStatus, string> = {
+  connected: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
+  ready: 'bg-sky-500/15 text-sky-400 border-sky-500/30',
+  needs_setup: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
+  draft: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
+  error: 'bg-red-500/15 text-red-400 border-red-500/30',
+};
+
+const sourceInstanceLabels: Record<InstanceStatus, string> = {
+  connected: 'connected',
+  ready: 'ready',
+  needs_setup: 'needs setup',
+  draft: 'draft',
+  error: 'unavailable',
 };
 
 export function Badge({
@@ -51,6 +69,12 @@ export function DeploymentBadge({ status }: { status: DeploymentStatus }) {
 
 export function NodeBadge({ status }: { status: NodeStatus }) {
   return <Badge label={status} colorClass={nodeColors[status]} />;
+}
+
+export function SourceInstanceBadge({ status }: { status: InstanceStatus }) {
+  return (
+    <Badge label={sourceInstanceLabels[status]} colorClass={sourceInstanceColors[status]} />
+  );
 }
 
 const agentColors: Record<AgentPhase, string> = {

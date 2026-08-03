@@ -15,6 +15,7 @@ import {
 
 import { PageState } from '@/components/PageState';
 import { SourcesDraftLayout } from '@/components/SourcesDraftLayout';
+import { SourceInstanceBadge } from '@/components/StatusBadge';
 import { Button, Card, Input, Label, PageHeader } from '@/components/ui';
 import { api, ApiError } from '@/lib/api';
 import {
@@ -34,8 +35,6 @@ import {
   normalizeSourceInstance,
   saveStoredInstances,
   sourceInstanceToWriteBody,
-  statusDotClass,
-  statusLabel,
   trustLabel,
   trustTone,
   unmappedCapabilities,
@@ -429,17 +428,23 @@ export default function PacksPage() {
     return inst;
   };
 
-  const removeInstance = async (instance: SourceInstance) => {
+  const removeInstance = async (
+    instance: SourceInstance,
+    options?: { silent?: boolean },
+  ) => {
     const type = getSourceType(instance.typeId);
     if (type?.singletonBuiltin) {
-      setError('Built-in appliance knowledge cannot be removed.');
-      return;
+      if (!options?.silent) {
+        setError('Built-in appliance knowledge cannot be removed.');
+      }
+      return false;
     }
     if (
+      !options?.silent &&
       typeof window !== 'undefined' &&
       !window.confirm(`Remove source “${instance.displayName}”? Configuration on this console will be discarded.`)
     ) {
-      return;
+      return false;
     }
     if (useServerRegistry) {
       setError(null);
@@ -447,21 +452,23 @@ export default function PacksPage() {
         await api.deleteSource(instance.id);
       } catch (e) {
         setError(e instanceof ApiError ? e.message : 'Failed to remove source');
-        return;
+        return false;
       }
     }
     persist(instances.filter((i) => i.id !== instance.id));
     if (expandedId === instance.id) setExpandedId(null);
+    if (configOpenId === instance.id) setConfigOpenId(null);
+    return true;
   };
 
-  const saveInstanceConfig = async (instance: SourceInstance) => {
+  const saveInstanceConfig = async (instance: SourceInstance): Promise<boolean> => {
     const type = getSourceType(instance.typeId);
-    if (!type) return;
+    if (!type) return false;
     const config = draftConfigs[instance.id] ?? instance.config;
     const displayName = (draftNames[instance.id] ?? instance.displayName).trim() || type.displayName;
     if (!instanceConfigComplete(type, config)) {
       setError('Fill in all required connection fields before saving.');
-      return;
+      return false;
     }
     setError(null);
     if (useServerRegistry) {
@@ -470,10 +477,10 @@ export default function PacksPage() {
         const normalized = normalizeSourceInstance(saved as unknown as Record<string, unknown>);
         persist(instances.map((i) => (i.id === instance.id ? normalized : i)));
         setConfigOpenId(null);
-        return;
+        return true;
       } catch (e) {
         setError(e instanceof ApiError ? e.message : 'Failed to save source config');
-        return;
+        return false;
       }
     }
     persist(
@@ -489,6 +496,7 @@ export default function PacksPage() {
       ),
     );
     setConfigOpenId(null);
+    return true;
   };
 
   const toggleGroup = async (instance: SourceInstance, group: string) => {
@@ -585,10 +593,7 @@ export default function PacksPage() {
               <span className="rounded-md border border-slate-800 bg-slate-950/50 px-2 py-0.5 text-xs text-slate-500">
                 {type.displayName}
               </span>
-              <span className="inline-flex items-center gap-1.5 rounded-md border border-slate-800 bg-slate-950/50 px-2 py-0.5 text-xs text-slate-300">
-                <span className={`inline-block h-2 w-2 rounded-full ${statusDotClass(status)}`} />
-                {statusLabel(status)}
-              </span>
+              <SourceInstanceBadge status={status} />
               {!instance.packBound && (
                 <span className="rounded-md border border-violet-800/40 bg-violet-950/30 px-2 py-0.5 text-xs text-violet-300/90">
                   Console instance
@@ -851,7 +856,7 @@ export default function PacksPage() {
             title="Information sources"
             description={
               draftLayout
-                ? 'Connect systems the AI may use. Open Configure on a service to manage all of its instances—credentials, groups, and agent permissions.'
+                ? 'Connect systems the AI may use. Each service lists its instances—edit one, or add another with its own credentials, groups, and agent permissions.'
                 : 'Connect systems the AI may use. Each connection is its own instance—with its own credentials, agent permissions, and groups. Add multiple databases or GitHub tokens when you need separate roles or scopes.'
             }
           />
@@ -861,29 +866,19 @@ export default function PacksPage() {
               <div className="flex items-start gap-2 rounded-xl border border-cyan-800/40 bg-cyan-950/20 p-3 text-sm text-slate-300 sm:flex-1">
                 <Shield className="mt-0.5 h-4 w-4 shrink-0 text-cyan-500/80" />
                 <div className="min-w-0 space-y-1">
-                  <p className="text-xs">
-                    <strong className="text-cyan-200/90">
-                      {draftLayout ? 'Draft layout' : 'Classic layout'}
-                    </strong>
-                    <span className="mx-1.5 text-slate-600">·</span>
-                    Backend:{' '}
-                    <span className="text-slate-200">
-                      {useServerRegistry ? 'Appliance registry' : 'Console draft (local)'}
-                    </span>
-                    {useServerRegistry ? (
-                      <span className="text-slate-500"> — CRUD via /sources</span>
-                    ) : (
-                      <span className="text-slate-500"> — localStorage + capability packs</span>
-                    )}
-                  </p>
                   {draftLayout ? (
-                    <p className="text-xs text-slate-500">
-                      One card per service. Configure opens a popup with every instance of that
-                      service.
+                    <p className="text-xs text-slate-400">
+                      One card per service. Edit an instance from the list, or use{' '}
+                      <strong className="font-medium text-slate-300">Add instance</strong> for a new
+                      one—each with its own credentials, groups, and agent permissions.
                     </p>
                   ) : (
-                    <p className="text-xs text-slate-500">
-                      One card per instance under On this appliance / Your systems.
+                    <p className="text-xs">
+                      <strong className="text-cyan-200/90">Classic layout</strong>
+                      <span className="mx-1.5 text-slate-600">·</span>
+                      <span className="text-slate-500">
+                        One card per instance under On this appliance / Your systems.
+                      </span>
                     </p>
                   )}
                 </div>
@@ -1006,7 +1001,6 @@ export default function PacksPage() {
             <SourcesDraftLayout
               typeSections={typeSections}
               data={data}
-              useServerRegistry={useServerRegistry}
               developerMode={developerMode}
               busyKey={busyKey}
               draftConfigs={draftConfigs}

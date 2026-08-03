@@ -106,7 +106,7 @@ export const SOURCE_TYPES: SourceTypeDef[] = [
     section: 'builtin',
     displayName: 'Appliance knowledge',
     summary:
-      'On-box documentation corpus (platform resource — not an MCP connector). Search via retrieval; edits via pending changes.',
+      'On-box documentation corpus. Search via retrieval; edits via pending changes.',
     multiInstance: false,
     singletonBuiltin: true,
     configFields: [],
@@ -144,7 +144,7 @@ export const SOURCE_TYPES: SourceTypeDef[] = [
     section: 'builtin',
     displayName: 'Draft notes',
     summary:
-      'Create-only draft files (platform resource — not an MCP connector). Separate from the documentation corpus.',
+      'Create-only draft files. Separate from the documentation corpus.',
     multiInstance: false,
     singletonBuiltin: true,
     configFields: [],
@@ -386,12 +386,13 @@ export function trustTone(trust: TrustKind): string {
   }
 }
 
+/** Operator-facing status label (matches SourceInstanceBadge wording). */
 export function statusLabel(status: InstanceStatus): string {
   switch (status) {
     case 'connected':
       return 'Connected';
     case 'ready':
-      return 'Ready to enable';
+      return 'Ready';
     case 'needs_setup':
       return 'Needs setup';
     case 'error':
@@ -861,7 +862,7 @@ export const DRAFT_SECTION_META: Record<
   apps: {
     title: 'Connected systems',
     description:
-      'Databases and apps the AI may use. Open Configure to manage every instance of that service.',
+      'Databases and apps the AI may use. Edit an instance from the list, or add another when you need separate credentials or scopes.',
   },
   advanced: {
     title: 'Advanced',
@@ -894,7 +895,7 @@ export function aggregateInstanceStatus(statuses: InstanceStatus[]): InstanceSta
 
 /**
  * Group instances under catalog source types for the draft layout.
- * Multi-instance types appear even with zero instances so Configure is always available.
+ * Multi-instance types appear even with zero instances so Add instance is always available.
  */
 export function buildSourceTypeRows(
   instances: SourceInstance[],
